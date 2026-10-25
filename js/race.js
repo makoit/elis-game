@@ -3,15 +3,16 @@ import { buildTrack, mulberry32 } from './trackdata.js';
 import { BikeSim } from './physics.js';
 import { createBike } from './bikes.js';
 import { buildTrackMesh, disposeObject } from './trackmesh.js';
-import { createSky, createEnvMap, createMountains, createClouds } from './env.js';
+import { createSky, createEnvMap, createMountains, createClouds, createStars } from './env.js';
+import { createCrowd } from './crowd.js';
+import { music } from './music.js';
 import { starTimes } from './autopilot.js';
 import { AIDriver, PERFECT } from './ai.js';
 import { resolveBike, randomConfig } from './bikedata.js';
 import { sfx } from './sfx.js';
 
-const BIKE_SCALE = 1.25;
+const BIKE_SCALE = 1.3;
 const STEP = 1 / 60;
-const SUN_DIR = new THREE.Vector3(0.5, 0.75, 0.45).normalize();
 const AI_NAMES = ['Luca', 'Mia', 'Ben', 'Emma', 'Noah', 'Lina', 'Finn', 'Ella', 'Jonas', 'Nele'];
 const envCache = new Map();
 
@@ -27,9 +28,14 @@ export class Race {
     Object.assign(this, { renderer: o.renderer, map: o.map, input: o.input, hud: o.hud, onFinish: o.onFinish, quality: o.quality, mode: o.mode });
     const map = o.map;
     const c = map.colors;
+    const light = { sun: 0xfff0dd, sunI: 2.0, hemi: 0.9, env: 0.9, dir: [0.5, 0.75, 0.45], ...(map.light || {}) };
+    const SUN_DIR = this.sunDir = new THREE.Vector3(...light.dir).normalize();
 
-    this.track = buildTrack(map);
-    this.stars = starTimes(map, o.bikeDef);
+    this.laps = map.loop ? Math.max(1, o.laps || map.laps?.def || 1) : 1;
+    this.track = buildTrack(map, this.laps);
+    this.stars = starTimes(map, o.bikeDef, this.laps);
+    this.lapTimes = [];
+    this.lapStart = 0;
 
     // ---- Szene ----
     this.scene = new THREE.Scene();
@@ -37,13 +43,14 @@ export class Race {
     const skyOpts = { top: c.sky, horizon: c.fog, ground: c.grass, sunDir: SUN_DIR };
     if (!envCache.has(map.id)) envCache.set(map.id, createEnvMap(o.renderer, skyOpts));
     this.scene.environment = envCache.get(map.id);
-    this.scene.environmentIntensity = 0.9;
+    this.scene.environmentIntensity = light.env;
     this.sky = createSky(skyOpts);
     this.mountains = createMountains(new THREE.Color(c.fog).lerp(new THREE.Color(c.grass), 0.35).getHex(), map.seed);
     this.clouds = createClouds(12, map.seed);
     this.scene.add(this.sky, this.mountains, this.clouds);
-    this.scene.add(new THREE.HemisphereLight(new THREE.Color(c.sky).lerp(new THREE.Color(0xffffff), 0.65), new THREE.Color(c.grass).lerp(new THREE.Color(0x888888), 0.5), 0.9));
-    this.sun = new THREE.DirectionalLight(0xfff0dd, 2.0);
+    if (map.stars) { this.stars3d = createStars(map.seed); this.scene.add(this.stars3d); }
+    this.scene.add(new THREE.HemisphereLight(new THREE.Color(c.sky).lerp(new THREE.Color(0xffffff), 0.65), new THREE.Color(c.grass).lerp(new THREE.Color(0x888888), 0.5), light.hemi));
+    this.sun = new THREE.DirectionalLight(light.sun, light.sunI);
     this.scene.add(this.sun, this.sun.target);
     this.shadows = o.quality !== 'low';
     if (this.shadows) {
@@ -58,11 +65,14 @@ export class Race {
 
     this.world = buildTrackMesh(this.track, o.quality);
     this.scene.add(this.world.group);
+    this.crowd = createCrowd(this.track, o.quality);
+    this.scene.add(this.crowd.group);
 
     // ---- Fahrer ----
     const hw = this.track.halfW;
     const aiCount = o.mode === 'vs' ? 3 : 0;
-    const lanes = [-0.55, -0.18, 0.18, 0.55].map((f) => f * hw * 0.9);
+    const spacing = Math.min(1.1, hw * 0.4);
+    const lanes = [-1.5, -0.5, 0.5, 1.5].map((f) => f * spacing);
     const order = [0, 1, 2, 3].slice(0, aiCount + 1);
     const playerLane = order.length > 1 ? 2 : 1.5;
     this.riders = [];
@@ -70,6 +80,7 @@ export class Race {
     const addRider = (def, isPlayer, lane, name, driver) => {
       const sim = new BikeSim(this.track, def);
       sim.lat = lane;
+      if (isPlayer) sim.assist = o.input.assist ? 1 : 0;
       const model = createBike(def, { lod: isPlayer ? undefined : 'low', shadows: this.shadows });
       model.group.scale.setScalar(BIKE_SCALE);
       model.group.rotation.order = 'YXZ';
@@ -111,6 +122,10 @@ export class Race {
     this.finishTimer = 0;
     this.hud.bar.style.left = '0%';
     this.hud.place.classList.toggle('hidden', this.mode !== 'vs');
+    this.hud.lap.classList.toggle('hidden', this.laps < 2);
+    this.hud.lapText.textContent = `1/${this.laps}`;
+    this.hud.banner.classList.remove('show');
+    music.play(map.id, true);
     this.hud.minimap.classList.toggle('hidden', false);
     this.syncVisuals(0, true);
   }
@@ -155,7 +170,7 @@ export class Race {
     const cv = this.hud.minimap;
     const size = cv.width;
     const pts = [];
-    for (let s = 0; s <= this.track.length; s += 15) { const p = this.track.pointAt(s); pts.push([p.x, p.z]); }
+    for (let s = 0; s <= this.track.lapLength; s += 15) { const p = this.track.pointAt(s); pts.push([p.x, p.z]); }
     const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
     const span = Math.max(maxX - minX, maxZ - minZ) || 1;
@@ -184,6 +199,12 @@ export class Race {
       g.strokeStyle = '#000'; g.lineWidth = 2;
       g.beginPath(); g.arc(x, y, r.isPlayer ? 6 : 4.5, 0, Math.PI * 2); g.fill(); g.stroke();
     });
+  }
+
+  // Hochformat (Handy): größerer vertikaler Blickwinkel, damit die Strecke nicht zum Schlauch wird
+  aspectFov() {
+    const a = innerWidth / innerHeight;
+    return a >= 1.3 ? 1 : 1 + Math.min(0.6, (1.3 - a) * 0.75);
   }
 
   resize() {
@@ -220,6 +241,7 @@ export class Race {
         setTimeout(() => this.hud.countdown.classList.remove('show'), 700);
       }
     } else if (this.phase === 'race') {
+      input.tick(dt);
       ctrl = { gas: input.gas, brake: input.brake, steer: input.steer };
       this.time += dt;
     } else {
@@ -245,6 +267,7 @@ export class Race {
               this.phase = 'finished';
               this.finalTime = this.clock;
               this.finalPlace = this.finishOrder.length;
+              this.crowd.excite = 1;
               sfx.finish();
             }
           }
@@ -262,7 +285,8 @@ export class Race {
     // Endwertung: erst Zieleinlauf, dann nach Fortschritt
     const rest = this.riders.filter((r) => this.finishOrder.indexOf(r) < 0).sort((a, b) => b.sim.s - a.sim.s);
     const ranking = [...this.finishOrder, ...rest].map((r) => ({ name: r.name, def: r.def, isPlayer: r.isPlayer, time: r.finishTime }));
-    cb({ time: this.finalTime, place: this.finalPlace, total: this.riders.length, ranking });
+    this.lapTimes.push(this.finalTime - this.lapStart);
+    cb({ time: this.finalTime, place: this.finalPlace, total: this.riders.length, ranking, laps: this.laps, lapTimes: this.lapTimes });
   }
 
   handleEvent(e) {
@@ -273,15 +297,34 @@ export class Race {
         this.shake = Math.max(this.shake, Math.min(0.5, e.impact * 0.03));
         break;
       case 'rock': {
-        sfx.rock();
-        this.shake = 0.6;
+        const k = e.rock.kind;
+        (sfx[k] || sfx.rock)();
+        this.shake = k === 'cone' ? 0.15 : 0.6;
         const idx = this.track.rocks.indexOf(e.rock);
-        if (idx >= 0) this.world.rockMeshes[idx].visible = false;
+        if (idx >= 0 && k !== 'log') this.world.rockMeshes[idx].visible = false; // Baumstämme bleiben liegen
         break;
       }
-      case 'pad': sfx.pad(); break;
+      case 'patch': (e.patch.kind === 'puddle' ? sfx.splash : sfx.mud)(); this.shake = Math.max(this.shake, 0.12); break;
+      case 'pad': sfx.pad(); this.flash('BOOST!'); break;
+      case 'lap': {
+        sfx.lap();
+        this.lapTimes.push(this.time - this.lapStart);
+        this.lapStart = this.time;
+        this.world.rockMeshes.forEach((m) => { m.visible = true; }); // neue Runde: Hindernisse stehen wieder
+        this.hud.lapText.textContent = `${e.lap + 1}/${this.laps}`;
+        this.flash(e.lap + 1 === this.laps ? 'LETZTE RUNDE!' : `RUNDE ${e.lap + 1}`);
+        break;
+      }
       default:
     }
+  }
+
+  flash(text) {
+    const b = this.hud.banner;
+    b.textContent = text;
+    b.classList.remove('show');
+    void b.offsetWidth; // Animation neu starten
+    b.classList.add('show');
   }
 
   syncVisuals(dt, snap) {
@@ -312,19 +355,19 @@ export class Race {
     const sim = this.player.sim;
     const pp = this.player.model.group.position;
     if (this.shadows) {
-      this.sun.position.copy(pp).addScaledVector(SUN_DIR, 70);
+      this.sun.position.copy(pp).addScaledVector(this.sunDir, 70);
       this.sun.target.position.copy(pp);
       this.sun.target.updateMatrixWorld();
     }
 
     // Kamera
-    const dist = 6.5 + sim.v * 0.06;
+    const dist = 5.2 + sim.v * 0.055 + (this.aspectFov() - 1) * 2.5;
     const camS = sim.s - dist;
     const cp = track.pointAt(camS);
     const crx = Math.cos(cp.theta), crz = Math.sin(cp.theta);
     const desired = new THREE.Vector3(
       cp.x + crx * sim.lat * 0.75,
-      Math.max(sim.y + 2.5, track.heightAt(camS) + 1.9),
+      Math.max(sim.y + 2.2, track.heightAt(camS) + 1.7),
       cp.z + crz * sim.lat * 0.75,
     );
     const lp = track.pointAt(sim.s + 8);
@@ -338,13 +381,14 @@ export class Race {
       this.shake = Math.max(0, this.shake - dt * 1.8);
     }
     camera.lookAt(this.camLook);
-    const targetFov = 62 + Math.min(22, sim.v * 0.55) + (sim.boost > 0 ? 10 : 0);
+    const targetFov = (62 + Math.min(22, sim.v * 0.55) + (sim.boost > 0 ? 10 : 0)) * this.aspectFov();
     this.fov += (targetFov - this.fov) * Math.min(1, dt * 4);
     if (Math.abs(camera.fov - this.fov) > 0.05) { camera.fov = this.fov; camera.updateProjectionMatrix(); }
     camera.updateMatrixWorld();
 
     // Himmel & Horizont folgen der Kamera
-    for (const o of [this.sky, this.mountains, this.clouds]) { o.position.x = camera.position.x; o.position.z = camera.position.z; }
+    for (const o of [this.sky, this.mountains, this.clouds, this.stars3d]) {
+      if (!o) continue; o.position.x = camera.position.x; o.position.z = camera.position.z; }
     this.mountains.position.y = camera.position.y - 20;
     this.updateSpeedLines(dt, sim.v);
   }
@@ -356,7 +400,10 @@ export class Race {
     if (hud.time.textContent !== t) hud.time.textContent = t;
     const sp = `${Math.round(sim.v * 3.6)}`;
     if (hud.speed.textContent !== sp) hud.speed.textContent = sp;
-    hud.bar.style.left = `${Math.min(100, (sim.s / this.track.length) * 100).toFixed(1)}%`;
+    const pct = `${Math.min(100, (sim.s / this.track.length) * 100).toFixed(1)}%`;
+    hud.bar.style.left = pct;
+    hud.bar.parentElement.style.setProperty('--p', pct);
+    hud.speedbar.style.width = `${Math.min(100, (sim.v / 40) * 100).toFixed(0)}%`;
     if (this.mode === 'vs') {
       const pl = `${this.rankOf(this.player)}/${this.riders.length}`;
       if (hud.placeText.textContent !== pl) hud.placeText.textContent = pl;
@@ -364,6 +411,10 @@ export class Race {
     this.mmTimer -= dt;
     if (this.mmTimer <= 0) { this.mmTimer = 0.1; this.drawMinimap(); }
     sfx.wind(sim.v);
+    const cheer = this.crowd.update(dt, sim.s, sim.v);
+    sfx.crowd(cheer * 0.9 + this.crowd.excite * 0.5);
+    music.setIntensity(Math.min(1, sim.v / 30));
+    document.body.style.setProperty('--speed', Math.min(1, Math.max(0, (sim.v - 14) / 22)).toFixed(2));
   }
 
   starsFor(time) {
@@ -374,6 +425,8 @@ export class Race {
 
   dispose() {
     sfx.windOff();
+    sfx.crowd(0);
+    document.body.style.setProperty('--speed', '0');
     this.camera.remove(this.lineMesh);
     const keepEnv = this.scene.environment;
     this.scene.environment = null;

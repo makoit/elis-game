@@ -7,9 +7,9 @@ import { disposeObject } from './trackmesh.js';
 export class Showroom {
   constructor(renderer) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x24324f);
-    this.scene.fog = new THREE.Fog(0x24324f, 9, 24);
-    const sky = { top: 0x2a4a86, horizon: 0xcfe3ff, ground: 0x20283f, sunDir: new THREE.Vector3(0.6, 0.5, 0.7) };
+    this.scene.background = new THREE.Color(0x070b16);
+    this.scene.fog = new THREE.Fog(0x070b16, 8, 26);
+    const sky = { top: 0x1a2a55, horizon: 0xcfe3ff, ground: 0x10162a, sunDir: new THREE.Vector3(0.6, 0.5, 0.7) };
     this.scene.environment = createEnvMap(renderer, sky);
     this.scene.environmentIntensity = 1.0;
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x445577, 0.6));
@@ -22,11 +22,21 @@ export class Showroom {
 
     const disc = new THREE.Mesh(
       new THREE.CylinderGeometry(1.6, 1.7, 0.1, 40),
-      new THREE.MeshStandardMaterial({ color: 0x3b4d7a, roughness: 0.6 }),
+      new THREE.MeshStandardMaterial({ color: 0x1c2542, roughness: 0.4, metalness: 0.4 }),
     );
     disc.position.y = -0.05;
     this.scene.add(disc);
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 32), new THREE.MeshStandardMaterial({ color: 0x1b2640, roughness: 1 }));
+    // Neonringe wie in einer Tuning-Garage
+    for (const [r, c, w] of [[1.72, 0xffb000, 0.035], [2.5, 0x19d3ff, 0.02], [3.4, 0xffb000, 0.012]]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, w, 8, 96), new THREE.MeshBasicMaterial({ color: c }));
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = -0.1;
+      this.scene.add(ring);
+    }
+    const glow = new THREE.PointLight(0xffa000, 8, 7);
+    glow.position.set(0, 0.4, 0);
+    this.scene.add(glow);
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(30, 32), new THREE.MeshStandardMaterial({ color: 0x0c1220, roughness: 0.55, metalness: 0.3 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.11;
     this.scene.add(floor);
@@ -45,13 +55,23 @@ export class Showroom {
   }
 
   resize() {
-    const aspect = innerWidth / innerHeight;
+    const w = innerWidth, h = innerHeight;
+    const aspect = w / h;
     this.camera.aspect = aspect;
-    // Hochformat: weiter weg, Rad mittig; Querformat: Rad rechts neben dem Statistik-Panel
-    const wide = aspect > 1.2;
-    this.camera.position.set(0, 1.5, wide ? 4.8 : 6.5);
-    this.turntable.position.set(wide ? 0.9 : 0, 0, 0);
-    this.camera.lookAt(wide ? 0.9 : 0, 0.75, 0);
+    const portrait = aspect < 1;
+    if (portrait) {
+      // Handy hochkant: Rad im oberen Bereich, Garage-Panel darunter (Bild nach oben verschoben)
+      this.camera.position.set(0, 1.4, 8.2);
+      this.camera.lookAt(0, 0.8, 0);
+      this.camera.setViewOffset(w, h, 0, h * 0.27, w, h);
+    } else {
+      // Querformat: Rad mittig im freien Bereich rechts neben dem Garage-Panel (Breite wie in style.css)
+      const panelPx = (h <= 470 ? Math.min(500, w * 0.54) : w <= 900 ? Math.min(470, w * 0.56) : Math.min(470, w * 0.5)) + 18;
+      this.camera.position.set(0, 1.5, h <= 470 ? 5.4 : 5.0);
+      this.camera.lookAt(0, 0.75, 0);
+      this.camera.setViewOffset(w, h, -panelPx / 2, 0, w, h);
+    }
+    this.turntable.position.set(0, 0, 0);
     this.camera.updateProjectionMatrix();
   }
 

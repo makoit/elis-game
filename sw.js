@@ -1,5 +1,5 @@
 // Service Worker: macht das Spiel offline-fähig (Netz zuerst, bei Fehler aus dem Cache).
-const CACHE = 'bikerace-v2';
+const CACHE = 'bikerace-v3';
 const CORE = ['./', './index.html', './css/style.css', './manifest.webmanifest', './js/main.js', './vendor/three.module.js'];
 
 self.addEventListener('install', (e) => {

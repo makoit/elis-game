@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { TIRE_WALL_COLORS } from './bikedata.js';
 
 // Prozedurales, detailliertes Fahrradmodell. Alle statischen Teile werden je Material zu EINEM Mesh
 // zusammengefasst (wenige Draw-Calls, wichtig fürs Tablet). Nur Räder, Kurbel und Beine bewegen sich.
@@ -14,7 +15,7 @@ const _dir = new THREE.Vector3();
 
 // ---------- Sammler für statische Geometrie ----------
 class Bucket {
-  constructor() { this.lists = new Map(); }
+  constructor(frameScale = 1) { this.lists = new Map(); this.fs = frameScale; }
   add(key, geo, matrix) {
     const g = geo.clone();
     if (matrix) g.applyMatrix4(matrix);
@@ -28,7 +29,14 @@ class Bucket {
     if (len < 1e-5) return;
     _q.setFromUnitVectors(UP, _dir.divideScalar(len));
     _m.compose(v3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2), _q, _one);
-    this.add(key, new THREE.CylinderGeometry(r2, r1, len, seg, 1), _m);
+    const k = key === 'frame' ? this.fs : 1;
+    this.add(key, new THREE.CylinderGeometry(r2 * k, r1 * k, len, seg, 1), _m);
+  }
+  // Ellipsoid mit Halbachsen (rx, ry, rz), um die x-Achse gedreht (für geneigten Oberkörper)
+  ell(key, p, rx, ry, rz, rotX = 0, seg = 12) {
+    _q.setFromAxisAngle(v3(1, 0, 0), rotX);
+    _m.compose(p, _q, v3(rx, ry, rz));
+    this.add(key, new THREE.SphereGeometry(1, seg, Math.max(6, seg - 4)), _m);
   }
   ball(key, p, r, sx = 1, sy = 1, sz = 1, seg = 12) {
     _m.compose(p, _q.identity(), v3(sx, sy, sz));
@@ -67,6 +75,7 @@ function canvasTex(w, h, draw, repeat = false) {
 }
 
 const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+const hash01 = (n) => { const x = Math.sin(n * 127.1 + 3.7) * 43758.5453; return x - Math.floor(x); };
 
 // ---------- Geometrie-Sätze je Rahmenstil ----------
 const FRAMES = {
@@ -85,31 +94,66 @@ export function createBike(def, opts = {}) {
 
   // ----- Materialien -----
   const std = (color, rough = 0.5, metal = 0.1, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });
+  const RD = def.rider;
+  const kit = RD.kit;
   const jerseyTex = canvasTex(128, 128, (g, w, h) => {
-    g.fillStyle = hex(col.jersey); g.fillRect(0, 0, w, h);
-    g.fillStyle = hex(col.accent === col.jersey ? 0xffffff : col.accent);
-    g.fillRect(0, h * 0.42, w, h * 0.12);
-    g.globalAlpha = 0.18; g.fillStyle = '#000';
-    for (let i = 0; i < w; i += 8) g.fillRect(i, 0, 2, h);
+    const base = hex(col.jersey), acc = hex(col.accent === col.jersey ? 0xffffff : col.accent);
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    g.fillStyle = acc;
+    if (kit === 'bands') { g.fillRect(0, h * 0.38, w, h * 0.1); g.fillRect(0, h * 0.58, w, h * 0.05); }
+    else if (kit === 'stripe') { g.fillRect(w * 0.4, 0, w * 0.2, h); g.fillRect(w * 0.9, 0, w * 0.06, h); g.fillRect(w * 0.1, 0, w * 0.06, h); }
+    else if (kit === 'halves') g.fillRect(0, 0, w * 0.5, h);
+    else if (kit === 'fade') { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, base); gr.addColorStop(1, acc); g.fillStyle = gr; g.fillRect(0, 0, w, h); }
+    else if (kit === 'checks') { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if ((x + y) % 2) g.fillRect((x * w) / 8, (y * h) / 8, w / 8, h / 8); }
+    g.globalAlpha = 0.14; g.fillStyle = '#000';
+    for (let i = 0; i < w; i += 6) g.fillRect(i, 0, 1, h); // Stoffstruktur
   }, true);
+  const frameTex = L.pattern === 'none' ? null : canvasTex(256, 256, (g, w, h) => {
+    const base = hex(col.frame), acc = hex(col.accent === col.frame ? 0xffffff : col.accent);
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    g.fillStyle = acc;
+    if (L.pattern === 'stripes') { g.fillRect(0, h * 0.18, w, h * 0.09); g.fillRect(0, h * 0.34, w, h * 0.03); g.fillRect(w * 0.43, 0, w * 0.14, h); }
+    else if (L.pattern === 'dots') { for (let y = 0; y < 10; y++) for (let x = 0; x < 6; x++) { g.beginPath(); g.arc(((x + (y % 2) * 0.5) * w) / 6, ((y + 0.5) * h) / 10, 7, 0, 6.3); g.fill(); } }
+    else if (L.pattern === 'fade') { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, acc); gr.addColorStop(0.6, base); g.fillStyle = gr; g.fillRect(0, 0, w, h); }
+    else if (L.pattern === 'flames') {
+      for (let i = 0; i < 6; i++) { const x0 = (i * w) / 6; g.beginPath(); g.moveTo(x0, 0); g.quadraticCurveTo(x0 + w / 12, h * 0.25, x0 + w / 14, h * 0.55); g.quadraticCurveTo(x0 + w / 7, h * 0.3, x0 + w / 6, 0); g.fill(); }
+      g.fillStyle = '#ffffff55'; for (let i = 0; i < 6; i++) { const x0 = (i * w) / 6 + 8; g.beginPath(); g.moveTo(x0, 0); g.quadraticCurveTo(x0 + w / 24, h * 0.14, x0 + w / 28, h * 0.28); g.quadraticCurveTo(x0 + w / 14, h * 0.15, x0 + w / 12, 0); g.fill(); }
+    } else if (L.pattern === 'camo') {
+      const tints = [acc, '#00000055', '#ffffff33'];
+      for (let i = 0; i < 38; i++) { g.fillStyle = tints[i % 3]; g.beginPath(); g.ellipse(hash01(i * 3 + 1) * w, hash01(i * 7 + 2) * h, 10 + hash01(i) * 24, 6 + hash01(i + 9) * 14, hash01(i + 4) * 3, 0, 6.3); g.fill(); }
+    }
+  }, true);
+  const fin = L.finish;
+  const frameParams = { color: frameTex ? 0xffffff : col.frame, map: frameTex, roughness: fin === 'matte' ? 0.85 : fin === 'metal' ? 0.22 : 0.3, metalness: fin === 'metal' ? 0.92 : fin === 'matte' ? 0.08 : 0.35, envMapIntensity: 1.2 };
+  const numTex = (L.number > 0 && !low) ? canvasTex(160, 120, (g, w, h) => {
+    g.fillStyle = '#f6f6f6'; g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 18); g.fill();
+    g.lineWidth = 6; g.strokeStyle = hex(col.frame); g.stroke();
+    g.fillStyle = '#15151a'; g.font = '900 78px "Arial Black", Impact, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(L.number), w / 2, h / 2 + 5);
+  }) : null;
   const mats = {
-    frame: std(col.frame, 0.32, 0.35, { envMapIntensity: 1.2 }),
+    frame: !low && fin === 'gloss' ? new THREE.MeshPhysicalMaterial({ ...frameParams, clearcoat: 1, clearcoatRoughness: 0.08 }) : std(frameParams.color, frameParams.roughness, frameParams.metalness, { map: frameTex, envMapIntensity: 1.2 }),
     accent: std(col.accent, 0.4, 0.2),
     dark: std(0x1a1a1d, 0.55, 0.3),
     rubber: std(0x111112, 0.95, 0),
+    tire: std(TIRE_WALL_COLORS[L.tireWall] ?? 0x111112, 0.9, 0),
     metal: std(0xc9ccd2, 0.28, 0.9),
     gold: std(L.fork === 'rigid' ? 0xc9ccd2 : 0xd4a537, 0.25, 0.9),
     saddle: std(0x151515, 0.8, 0),
-    skin: std(0xe9b996, 0.7, 0),
+    skin: std(RD.skin, 0.62, 0),
+    hair: std(RD.hair, 0.8, 0),
     jersey: std(0xffffff, 0.75, 0, { map: jerseyTex }),
-    shorts: std(0x20232b, 0.8, 0),
-    helmet: std(col.helmet, 0.35, 0.1),
-    shoe: std(0xf4f4f4, 0.6, 0),
+    shorts: std(col.shorts, 0.8, 0),
+    sock: std(0xf4f4f4, 0.9, 0),
+    glove: std(0x1c1c20, 0.8, 0),
+    helmet: std(col.helmet, 0.3, 0.1),
+    shoe: std(col.shoes, 0.55, 0),
+    sole: std(0x16161a, 0.9, 0),
     glass: std(0x0b0d12, 0.1, 0.8),
-    rimMat: std(L.rim > 0.04 ? 0x15161a : 0x9ea2aa, 0.35, 0.7),
+    rimMat: std(col.rim ?? (L.rim > 0.04 ? 0x15161a : 0x9ea2aa), 0.35, 0.7),
   };
 
-  const B = new Bucket();
+  const B = new Bucket(L.tubes || 1);
   const R = v3(0, r, F.wb / 2);
   const Fw = v3(0, r, -F.wb / 2);
   const bb = v3(0, F.bbY, F.bbZ);
@@ -198,9 +242,13 @@ export function createBike(def, opts = {}) {
     B.tube('dark', ringTop, cogTop, 0.006, 0.006, 5);
     B.tube('dark', ringBot, cogBot.clone().add(v3(0, -0.05, 0.03)), 0.006, 0.006, 5);
     B.box('dark', cogBot.clone().add(v3(0.01, -0.06, 0.04)), 0.03, 0.09, 0.05); // Schaltwerk
-    // Scheibenbremse-Sättel
-    B.box('dark', Fw.clone().add(v3(-0.07, 0.07, -0.02)), 0.02, 0.045, 0.045);
-    B.box('dark', R.clone().add(v3(-0.07, 0.07, -0.02)), 0.02, 0.045, 0.045);
+    if (L.disc !== false) { // Scheibenbremse-Sättel
+      B.box('dark', Fw.clone().add(v3(-0.07, 0.07, -0.02)), 0.02, 0.045, 0.045);
+      B.box('dark', R.clone().add(v3(-0.07, 0.07, -0.02)), 0.02, 0.045, 0.045);
+    } else { // Felgenbremsen
+      B.box('dark', F.hb.clone().add(v3(0, -0.12, -0.02)), 0.11, 0.025, 0.03);
+      B.box('dark', F.st.clone().add(v3(0, -0.1, 0.03)), 0.11, 0.025, 0.03);
+    }
   }
 
   // Trinkflasche (Rennrad/Gravel)
@@ -212,36 +260,98 @@ export function createBike(def, opts = {}) {
   // ----- Fahrer (statisch) -----
   const hip = v3(0, F.saddleY + 0.07, F.saddleZ - 0.08);
   const shoulder = v3(0, F.saddleY + F.shoulderY, F.shoulderZ);
-  B.tube('shorts', hip.clone().add(v3(0, -0.02, 0.0)), hip.clone().lerp(shoulder, 0.3), 0.125, 0.12, 12);
-  B.tube('jersey', hip.clone().lerp(shoulder, 0.25), shoulder.clone().add(v3(0, -0.04, 0)), 0.12, 0.155, 14);
-  B.ball('jersey', shoulder.clone().add(v3(0, -0.03, 0)), 0.15, 1.15, 0.7, 0.9);
-  const neck = shoulder.clone().add(v3(0, 0.06, -0.03));
-  const head = shoulder.clone().add(v3(0, 0.16, -0.075));
-  B.tube('skin', neck, head, 0.045, 0.045, 8);
-  B.ball('skin', head, 0.098, 1, 1.05, 1.0);
-  // Helm
-  const helm = head.clone().add(v3(0, 0.025, 0.02));
-  B.ball('helmet', helm, 0.125, 1.0, 0.82, 1.3, 14);
-  if (!low) {
-    for (const sx of [-1, 0, 1]) B.box('dark', helm.clone().add(v3(sx * 0.055, 0.085, -0.03)), 0.022, 0.012, 0.13);
-    B.box('glass', head.clone().add(v3(0, 0.012, -0.085)), 0.17, 0.045, 0.03); // Sonnenbrille
+  const tdir = shoulder.clone().sub(hip).normalize();
+  const lean = Math.atan2(-tdir.z, tdir.y); // Vorneigung des Oberkörpers
+  const along = (t, dx = 0, dy = 0, dz = 0) => hip.clone().lerp(shoulder, t).add(v3(dx, dy, dz));
+  // Oberkörper aus überlappenden Ellipsoiden (schlanke Taille, breite Schultern)
+  const E = (key, t, rx, ry, rz, dz = 0) => B.ell(key, along(t, 0, 0, dz), rx, ry, rz, -lean, low ? 8 : 12);
+  E('shorts', 0.0, 0.158, 0.125, 0.13);
+  E('jersey', 0.2, 0.14, 0.12, 0.108);
+  E('jersey', 0.45, 0.16, 0.14, 0.12);
+  E('jersey', 0.72, 0.178, 0.13, 0.125);
+  E('jersey', 1.0, 0.2, 0.085, 0.115);
+  const roadKit = L.frame === 'road';
+  if (!low && roadKit) { // Trikottaschen hinten
+    for (const x of [-0.08, 0, 0.08]) B.ell('dark', along(0.2, x, 0.01, 0.1), 0.045, 0.045, 0.012, -lean, 8);
   }
-  if (def.cat === 'downhill') {
-    B.ball('helmet', head.clone().add(v3(0, -0.04, -0.05)), 0.12, 1.0, 0.8, 1.0, 12); // Kinnbügel
-    B.box('helmet', helm.clone().add(v3(0, 0.0, -0.12)), 0.2, 0.012, 0.09, -0.2); // Schirm
-  } else if (L.frame === 'mtb') {
-    B.box('helmet', helm.clone().add(v3(0, -0.0, -0.13)), 0.18, 0.01, 0.07, -0.15); // kleiner Schirm
+  const head = shoulder.clone().add(v3(0, 0.18, -0.075));
+  B.tube('skin', shoulder.clone().add(v3(0, 0.04, 0)), head.clone().add(v3(0, -0.07, 0.025)), 0.052, 0.046, 8); // Hals
+  // Kopf: Schädel, Kinn, Nase, Ohren (+ Augen)
+  B.ell('skin', head, 0.092, 0.105, 0.1, 0, low ? 8 : 12);
+  B.ell('skin', head.clone().add(v3(0, -0.075, -0.045)), 0.062, 0.05, 0.058, 0, 8);
+  if (!low) {
+    B.ell('skin', head.clone().add(v3(0, -0.015, -0.098)), 0.02, 0.028, 0.03, 0, 8);
+    for (const sx of [-1, 1]) {
+      B.ell('skin', head.clone().add(v3(sx * 0.094, -0.01, 0.01)), 0.014, 0.03, 0.022, 0, 6);
+      B.ell('dark', head.clone().add(v3(sx * 0.036, 0.018, -0.088)), 0.013, 0.01, 0.01, 0, 6);
+    }
+  }
+  // Haare (unter dem Helm sichtbar)
+  const hs = RD.hairStyle;
+  if (hs !== 'none') {
+    B.ell('hair', head.clone().add(v3(0, -0.01, 0.045)), 0.098, 0.088, 0.085, 0, 8);
+    if (hs === 'pony') { B.tube('hair', head.clone().add(v3(0, -0.04, 0.115)), head.clone().add(v3(0, -0.13, 0.24)), 0.032, 0.02, 6); B.ell('hair', head.clone().add(v3(0, -0.15, 0.255)), 0.026, 0.05, 0.026, 0.2, 6); }
+    else if (hs === 'long') { B.ell('hair', head.clone().add(v3(0, -0.1, 0.09)), 0.105, 0.15, 0.075, 0, 8); B.tube('hair', head.clone().add(v3(0, -0.12, 0.12)), head.clone().add(v3(0, -0.2, 0.3)), 0.07, 0.04, 8); }
+    else if (hs === 'curly' && !low) { for (let i = 0; i < 9; i++) { const a = (i / 9) * 6.28; B.ell('hair', head.clone().add(v3(Math.cos(a) * 0.1, -0.02 - (i % 3) * 0.03, 0.06 + Math.abs(Math.sin(a)) * 0.05)), 0.045, 0.045, 0.045, 0, 6); } }
+  }
+  // Helm
+  const helm = head.clone().add(v3(0, 0.03, 0.02));
+  const ht = RD.helmetType;
+  if (ht === 'road') {
+    B.ell('helmet', helm.clone().add(v3(0, 0.012, 0.025)), 0.112, 0.092, 0.152, 0, low ? 8 : 14);
+    B.ell('helmet', helm.clone().add(v3(0, -0.012, 0.15)), 0.06, 0.05, 0.085, 0, 8);
+    if (!low) for (const x of [-0.06, -0.03, 0, 0.03, 0.06]) B.box('dark', helm.clone().add(v3(x, 0.098 - Math.abs(x) * 0.7, 0.0)), 0.016, 0.01, 0.15);
+  } else if (ht === 'mtb') {
+    B.ell('helmet', helm.clone().add(v3(0, 0.02, 0.03)), 0.122, 0.1, 0.152, 0, low ? 8 : 14);
+    B.ell('helmet', helm.clone().add(v3(0, -0.035, 0.1)), 0.105, 0.06, 0.07, 0, 8);
+    B.box('helmet', helm.clone().add(v3(0, 0.0, -0.13)), 0.19, 0.01, 0.08, -0.16); // Schirm
+    if (!low) for (const x of [-0.05, 0, 0.05]) B.box('dark', helm.clone().add(v3(x, 0.105 - Math.abs(x) * 0.6, 0.0)), 0.02, 0.01, 0.13);
+  } else { // Fullface
+    B.ell('helmet', helm.clone().add(v3(0, 0.0, 0.03)), 0.135, 0.125, 0.16, 0, low ? 8 : 14);
+    B.ell('helmet', head.clone().add(v3(0, -0.075, -0.1)), 0.088, 0.062, 0.065, 0, 8); // Kinnbügel
+    B.box('helmet', helm.clone().add(v3(0, 0.07, -0.15)), 0.22, 0.012, 0.13, -0.25); // Schirm
+    B.ell('glass', head.clone().add(v3(0, 0.012, -0.09)), 0.115, 0.04, 0.03, 0, 8); // Goggle
+    B.box('dark', head.clone().add(v3(0, 0.012, 0.0)), 0.265, 0.04, 0.012); // Goggle-Band
+  }
+  if (!low) { // Kinnriemen
+    for (const sx of [-1, 1]) B.tube('dark', helm.clone().add(v3(sx * 0.1, -0.02, 0.0)), head.clone().add(v3(sx * 0.03, -0.1, -0.06)), 0.005, 0.005, 4);
+    if (RD.glasses && ht !== 'full') { // Sportbrille
+      B.ell('glass', head.clone().add(v3(0, 0.016, -0.092)), 0.1, 0.027, 0.026, 0, 8);
+      for (const sx of [-1, 1]) B.tube('dark', head.clone().add(v3(sx * 0.098, 0.018, -0.07)), head.clone().add(v3(sx * 0.096, 0.012, -0.0)), 0.006, 0.006, 4);
+    }
+  }
+  // Startnummer auf dem Rücken
+  const numPlanes = [];
+  if (numTex) {
+    const back = along(0.5, 0, 0, 0.128 + 0.012);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.112), new THREE.MeshStandardMaterial({ map: numTex, transparent: true, roughness: 0.8 }));
+    m.position.copy(back);
+    m.rotation.x = -lean;
+    group.add(m);
   }
 
-  // Arme (statisch, Hände am Lenker)
+  // Arme: kurze Ärmel (Rennrad) oder lange Ärmel (MTB), Handschuhe am Lenker
+  const longSleeve = !roadKit;
   for (const sx of [-1, 1]) {
-    const sh = shoulder.clone().add(v3(sx * 0.19, -0.03, 0.0));
+    const sh = along(1.0, sx * 0.205, -0.04, 0.0);
     const hd = v3(sx * hand.x, hand.y, hand.z);
-    const el = sh.clone().lerp(hd, 0.5).add(v3(sx * 0.07, -0.06, 0.03));
-    B.ball('jersey', sh, 0.065);
-    B.tube('jersey', sh, el, 0.058, 0.046, 8);
-    B.tube('skin', el, hd, 0.042, 0.032, 8);
-    B.ball('dark', hd, 0.04, 1, 0.9, 1.2); // Handschuh
+    const el = sh.clone().lerp(hd, 0.5).add(v3(sx * 0.075, -0.06, 0.03));
+    const wrist = hd.clone().add(v3(0, 0.0, 0.05));
+    B.ell('jersey', sh, 0.07, 0.07, 0.07, 0, 10);
+    if (longSleeve) {
+      B.tube('jersey', sh, el, 0.058, 0.047, 8);
+      B.ball('jersey', el, 0.048);
+      B.tube('jersey', el, wrist, 0.047, 0.036, 8);
+    } else {
+      const cut = sh.clone().lerp(el, 0.5);
+      B.tube('jersey', sh, cut, 0.058, 0.052, 8);
+      B.tube('skin', cut, el, 0.049, 0.045, 8);
+      B.ball('skin', el, 0.045);
+      B.tube('skin', el, wrist, 0.045, 0.034, 8);
+    }
+    B.tube('glove', wrist, hd, 0.036, 0.034, 6);
+    B.ell('glove', hd, 0.044, 0.04, 0.056, 0, 8); // Hand
+    B.ell('glove', hd.clone().add(v3(0, -0.026, -0.036)), 0.036, 0.022, 0.03, 0, 6); // Finger um den Griff
   }
 
   // ----- Dekor: Markenschriftzug -----
@@ -287,6 +397,9 @@ export function createBike(def, opts = {}) {
     const rimR = r - tire * 2 - 0.004;
     // Reifen (+ Stollen)
     WB.add('rubber', new THREE.TorusGeometry(r - tire, tire, low ? 6 : 10, low ? 20 : 36).rotateY(Math.PI / 2));
+    if (L.tireWall !== 'black') { // farbige Reifenflanke
+      for (const sx of [-1, 1]) WB.add('tire', new THREE.RingGeometry(rimR + 0.006, r - tire * 0.15, low ? 20 : 40).rotateY(sx * Math.PI / 2), new THREE.Matrix4().makeTranslation(sx * (tire * 0.92), 0, 0));
+    }
     if (!low && L.tread === 'knobs') {
       const n = 44;
       for (let i = 0; i < n; i++) {
@@ -310,7 +423,7 @@ export function createBike(def, opts = {}) {
     WB.add('metal', new THREE.CylinderGeometry(0.022, 0.022, 0.12, 10).rotateZ(Math.PI / 2));
     if (!low) {
       // Bremsscheibe
-      WB.add('metal', new THREE.CylinderGeometry(0.09, 0.09, 0.004, 20).rotateZ(Math.PI / 2), new THREE.Matrix4().makeTranslation(-0.05, 0, 0));
+      if (L.disc !== false) WB.add('metal', new THREE.CylinderGeometry(0.09, 0.09, 0.004, 20).rotateZ(Math.PI / 2), new THREE.Matrix4().makeTranslation(-0.05, 0, 0));
       if (isRear) { // Kassette
         for (let i = 0; i < 5; i++) {
           const rad = 0.052 - i * 0.007;
@@ -347,22 +460,42 @@ export function createBike(def, opts = {}) {
   group.add(crankG);
 
   // ----- Beine (animiert) -----
-  const limb = (r1, r2, mat) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r2, r1, 1, 10), mat); m.castShadow = true; return m; };
+  // Oberschenkel: Shorts-Teil + Haut-Teil (Rennrad: eng bis zur Mitte, MTB: weit bis übers Knie), Wade mit Wölbung, Socke, Schuh
+  const limb = (r1, r2, mat, seg = 10) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r2, r1, 1, seg), mat); m.castShadow = true; return m; };
+  const baggy = !roadKit;
+  const cut = baggy ? 0.8 : 0.58; // Anteil des Oberschenkels, der von der Hose bedeckt ist
+  const padded = def.cat === 'downhill';
   const legs = [-1, 1].map((sx) => {
+    const sk = (r, d = 8) => new THREE.Mesh(new THREE.SphereGeometry(r, d, Math.max(6, d - 2)), mats.skin);
     const l = {
       sx,
-      thigh: limb(0.082, 0.062, mats.shorts),
-      shin: limb(0.058, 0.04, mats.skin),
-      knee: new THREE.Mesh(new THREE.SphereGeometry(0.062, 10, 8), mats.skin),
-      shoe: new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.06, 0.26), mats.shoe),
+      thighA: limb(baggy ? 0.105 : 0.092, baggy ? 0.102 : 0.076, mats.shorts, low ? 7 : 12),
+      thighB: limb(baggy ? 0.066 : 0.07, 0.056, mats.skin, low ? 7 : 10),
+      shin: limb(0.056, 0.036, mats.skin, low ? 7 : 10),
+      sock: limb(0.04, 0.043, mats.sock, 8),
+      knee: sk(0.062),
+      calf: new THREE.Mesh(new THREE.SphereGeometry(0.042, 8, 6).scale(0.95, 1.7, 1.05), mats.skin),
+      pad: padded ? new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6).scale(1, 1.1, 0.8), mats.dark) : null,
+      shoe: new THREE.Group(),
     };
-    l.shoe.castShadow = true;
-    group.add(l.thigh, l.shin, l.knee, l.shoe);
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(0.098, 0.022, 0.27), mats.sole);
+    sole.position.y = -0.03;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.094, 0.05, 0.2), mats.shoe);
+    body.position.set(0, 0.0, 0.025);
+    const toe = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6).scale(0.95, 0.6, 1.2), mats.shoe);
+    toe.position.set(0, -0.003, -0.085);
+    const ankle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.09), mats.shoe);
+    ankle.position.set(0, 0.04, 0.07);
+    l.shoe.add(sole, body, toe, ankle);
+    [sole, body, toe, ankle].forEach((m) => { m.castShadow = true; });
+    group.add(l.thighA, l.thighB, l.shin, l.sock, l.knee, l.shoe);
+    if (!low) group.add(l.calf);
+    if (l.pad) group.add(l.pad);
     return l;
   });
 
   const LEG = 0.5;
-  const H = new THREE.Vector3(), Fo = new THREE.Vector3(), K = new THREE.Vector3();
+  const H = new THREE.Vector3(), Fo = new THREE.Vector3(), K = new THREE.Vector3(), P = new THREE.Vector3(), A = new THREE.Vector3();
   function place(m, a, b) {
     _dir.subVectors(b, a);
     const len = _dir.length();
@@ -385,13 +518,32 @@ export function createBike(def, opts = {}) {
       const hgt = Math.sqrt(Math.max(0, LEG * LEG - half * half));
       const ny = dy / dist, nz = dz / dist;
       K.set(H.x + l.sx * 0.02, H.y + ny * half - nz * hgt, H.z + nz * half + ny * hgt); // Knie zeigt nach vorn
-      place(l.thigh, H, K);
-      place(l.shin, K, Fo);
+      P.lerpVectors(H, K, cut);
+      place(l.thighA, H, P);
+      place(l.thighB, P, K);
+      A.lerpVectors(K, Fo, 0.8);
+      place(l.shin, K, A);
+      place(l.sock, A, Fo);
       l.knee.position.copy(K);
-      l.shoe.position.set(Fo.x, Fo.y - 0.03, Fo.z - 0.035);
+      if (l.pad) l.pad.position.set(K.x, K.y, K.z - 0.035);
+      // Wade: hinter dem Schienbein, im oberen Drittel
+      A.lerpVectors(K, Fo, 0.3);
+      l.calf.position.set(A.x, A.y, A.z + 0.022);
+      _dir.subVectors(Fo, K).normalize();
+      l.calf.quaternion.setFromUnitVectors(UP, _dir);
+      l.shoe.position.set(Fo.x, Fo.y - 0.015, Fo.z - 0.03);
+      l.shoe.rotation.x = Math.sin(a) * 0.12; // Fuß kippt leicht mit
     });
   }
   pose(0);
+
+  // Startnummer am Lenker (von hinten lesbar)
+  if (numTex) {
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.11), new THREE.MeshStandardMaterial({ map: numTex, transparent: true, roughness: 0.7 }));
+    pl.position.copy(stemTop).add(v3(0, 0.065, -0.05));
+    pl.rotation.x = -0.35;
+    group.add(pl);
+  }
 
   if (opts.shadows === false) group.traverse((o) => { o.castShadow = false; });
 

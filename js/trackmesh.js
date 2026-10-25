@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { START, mulberry32 } from './trackdata.js';
+import { mulberry32 } from './trackdata.js';
 
 // Baut aus den Streckendaten die 3D-Welt: Gelände (in Abschnitten, damit Unsichtbares gespart wird),
 // Straßenbelag mit Textur, Dekoration, Felsen, Boost-Felder, Start/Ziel.
@@ -106,11 +106,17 @@ export function buildTrackMesh(track, quality = 'high') {
   const roadMat = new MatCls({ vertexColors: true, map: roadTex, ...(quality === 'low' ? {} : { roughness: asphalt ? 0.8 : 0.98, metalness: 0 }) });
 
   // ---- Gelände-Band, in Abschnitten ----
-  const cross = [
-    { lat: -40, t: 'g', drop: -40 }, { lat: -34, t: 'g' }, { lat: -20, t: 'g' }, { lat: -hw - 8, t: 'g' },
+  const S = map.span || 40; // seitliche Breite des Geländebandes (kleine Rundkurse: schmaler, damit sich nichts überlappt)
+  const cross = S >= 30 ? [
+    { lat: -S, t: 'g', drop: -40 }, { lat: -S + 6, t: 'g' }, { lat: -20, t: 'g' }, { lat: -hw - 8, t: 'g' },
     { lat: -hw - 3, t: 'v' }, { lat: -hw, t: 'v' }, { lat: -hw, t: 'r' }, { lat: hw, t: 'r' },
     { lat: hw, t: 'v' }, { lat: hw + 3, t: 'v' }, { lat: hw + 8, t: 'g' }, { lat: 20, t: 'g' },
-    { lat: 34, t: 'g' }, { lat: 40, t: 'g', drop: -40 },
+    { lat: S - 6, t: 'g' }, { lat: S, t: 'g', drop: -40 },
+  ] : [
+    { lat: -S, t: 'g', drop: -40 }, { lat: -S + 3, t: 'g' }, { lat: -hw - 6, t: 'g' },
+    { lat: -hw - 3, t: 'v' }, { lat: -hw, t: 'v' }, { lat: -hw, t: 'r' }, { lat: hw, t: 'r' },
+    { lat: hw, t: 'v' }, { lat: hw + 3, t: 'v' }, { lat: hw + 6, t: 'g' },
+    { lat: S - 3, t: 'g' }, { lat: S, t: 'g', drop: -40 },
   ];
   const m = cross.length;
   const roadJ = cross.findIndex((c) => c.t === 'r');
@@ -118,19 +124,22 @@ export function buildTrackMesh(track, quality = 'high') {
   const rampCol = new THREE.Color(col.ramp);
   const tmp = new THREE.Color();
   const p = {};
-  const totalRows = Math.ceil((track.end - START) / MESH_DS);
+  const range = track.meshTo - track.meshFrom;
+  const totalRows = Math.max(2, Math.round(range / MESH_DS));
+  const rowDs = range / totalRows; // bei Rundkursen genau eine Runde
+  totalRows;
 
   const chunks = [];
   const rowsPerChunk = Math.round(CHUNK / MESH_DS);
-  for (let r0 = 0; r0 < totalRows - 1; r0 += rowsPerChunk) {
-    const r1 = Math.min(totalRows - 1, r0 + rowsPerChunk);
+  for (let r0 = 0; r0 < totalRows; r0 += rowsPerChunk) {
+    const r1 = Math.min(totalRows, r0 + rowsPerChunk);
     const nr = r1 - r0 + 1;
     const pos = new Float32Array(nr * m * 3);
     const colr = new Float32Array(nr * m * 3);
     const uvT = new Float32Array(nr * m * 2);
     const uvR = new Float32Array(nr * m * 2);
     for (let i = 0; i < nr; i++) {
-      const s = START + (r0 + i) * MESH_DS;
+      const s = track.meshFrom + (r0 + i) * rowDs;
       pointAt(s, p);
       const rx = Math.cos(p.theta), rz = Math.sin(p.theta);
       const terr = terrainAt(s);
@@ -185,7 +194,7 @@ export function buildTrackMesh(track, quality = 'high') {
   }
 
   // ---- Dekoration (instanziert) ----
-  const count = Math.round((track.end / 100) * map.trees);
+  const count = Math.round((range / 100) * map.trees);
   const blob = (r, detail, seed, squash = 1) => {
     const g = new THREE.IcosahedronGeometry(r, detail);
     const pos = g.attributes.position;
@@ -243,11 +252,28 @@ export function buildTrackMesh(track, quality = 'high') {
       colored(at(new THREE.CylinderGeometry(0.2, 0.2, 1.0, 7), 1.2, 2.4, 0), 0x4a8a45),
     ]),
   }[map.decor];
+  // Rundkurse: Dekoration nicht auf andere Streckenteile setzen
+  const samples = [];
+  for (let sm = track.meshFrom; sm < track.meshTo; sm += 6) { pointAt(sm, p); samples.push(p.x, p.z, sm); }
+  const nearTrack = (x, z, s, lat) => {
+    const lim = (hw + Math.abs(lat) * 0 + 4) ** 2;
+    for (let i = 0; i < samples.length; i += 3) {
+      const d2 = (samples[i] - x) ** 2 + (samples[i + 1] - z) ** 2;
+      if (d2 < lim && Math.abs(samples[i + 2] - s) > 30) return true;
+    }
+    return false;
+  };
+  const spotOk = (s, lat) => {
+    if (!track.loop) return true;
+    pointAt(s, p);
+    return !nearTrack(p.x + Math.cos(p.theta) * lat, p.z + Math.sin(p.theta) * lat, s, lat);
+  };
   if (treeGeo) {
     const spots = [];
     for (let i = 0; i < count; i++) {
-      const s = START + rng() * (track.end - START);
+      const s = track.meshFrom + rng() * range;
       const lat = (rng() < 0.5 ? -1 : 1) * (hw + 5 + rng() * 24);
+      if (!spotOk(s, lat)) continue;
       pointAt(s, p);
       spots.push({ x: p.x + Math.cos(p.theta) * lat, z: p.z + Math.sin(p.theta) * lat, y: terrainAt(s) + bankH(lat) - 0.2, size: 0.8 + rng() * 0.9, rot: rng() * 6.28 });
     }
@@ -268,14 +294,15 @@ export function buildTrackMesh(track, quality = 'high') {
   // Büsche und Findlinge am Rand
   {
     const bushGeo = mergeGeometries([colored(at(blob(0.7, 1, 5, 0.7), 0, 0.4, 0), 0x4c9a4a), colored(at(blob(0.5, 1, 6, 0.7), 0.6, 0.3, 0.2), 0x3d8a40)]);
-    const n = Math.round(count * 1.5);
+    const n = Math.max(1, Math.round(count * 1.5));
     const mesh = new THREE.InstancedMesh(bushGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), n);
     const q = new THREE.Quaternion(), sc = new THREE.Vector3(), mat4 = new THREE.Matrix4(), axis = new THREE.Vector3(0, 1, 0), pv = new THREE.Vector3();
     const rockish = map.decor === 'cactus';
     for (let i = 0; i < n; i++) {
-      const s = START + rng() * (track.end - START);
+      const s = track.meshFrom + rng() * range;
       const lat = (rng() < 0.5 ? -1 : 1) * (hw + 3.5 + rng() * 12);
       pointAt(s, p);
+      if (!spotOk(s, lat)) { mat4.makeScale(0, 0, 0); mesh.setMatrixAt(i, mat4); continue; }
       q.setFromAxisAngle(axis, rng() * 6);
       sc.setScalar(0.8 + rng());
       mat4.compose(pv.set(p.x + Math.cos(p.theta) * lat, terrainAt(s) + bankH(lat) - 0.1, p.z + Math.sin(p.theta) * lat), q, sc);
@@ -287,20 +314,139 @@ export function buildTrackMesh(track, quality = 'high') {
     group.add(mesh);
   }
 
-  // ---- Felsen (Hindernisse) ----
+  // ---- Hindernisse ----
   const rockGeo = colored(blob(0.8, 1, 9, 0.8), 0xffffff);
   const rockMat = new THREE.MeshLambertMaterial({ vertexColors: true, color: col.rock });
+  const logMat = new THREE.MeshLambertMaterial({ color: 0x8a5f33 });
+  const logEnd = new THREE.MeshLambertMaterial({ color: 0xcaa26a });
+  const baleTex = canvasTexture(128, 64, (g, w, h) => {
+    g.fillStyle = '#d9b44a'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(120,80,20,0.55)'; g.lineWidth = 2;
+    for (let i = 0; i < 40; i++) { const x = hash(i * 3.1) * w, y = hash(i * 7.7) * h; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 14, y + (hash(i) - 0.5) * 6); g.stroke(); }
+    g.fillStyle = '#b02a22'; g.fillRect(w * 0.3, 0, 5, h); g.fillRect(w * 0.7, 0, 5, h);
+  });
+  const baleMat = new THREE.MeshLambertMaterial({ map: baleTex });
+  const coneMat = new THREE.MeshLambertMaterial({ color: 0xff6a1a });
+  const coneWhite = new THREE.MeshLambertMaterial({ color: 0xf4f4f4 });
+  const coneBase = new THREE.MeshLambertMaterial({ color: 0x222222 });
+  const mk = {
+    rock(r) {
+      const mesh = new THREE.Mesh(rockGeo, rockMat);
+      mesh.scale.set(1 + hash(r.s) * 0.5, 0.9 + hash(r.s + 3) * 0.6, 1 + hash(r.s + 7) * 0.5);
+      mesh.rotation.y = hash(r.s + 1) * 6;
+      return mesh;
+    },
+    log(r) {
+      const g = new THREE.Group();
+      const len = r.hw * 2;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, len, 10).rotateZ(Math.PI / 2), logMat);
+      g.add(body);
+      for (const sx of [-1, 1]) {
+        const cap = new THREE.Mesh(new THREE.CircleGeometry(0.3, 10).rotateY(sx * Math.PI / 2), logEnd);
+        cap.position.x = sx * (len / 2 + 0.005);
+        g.add(cap);
+      }
+      g.position.y = 0.05;
+      g.rotation.y = (hash(r.s) - 0.5) * 0.25;
+      return g;
+    },
+    bale(r) {
+      const g = new THREE.Group();
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 0.9), baleMat);
+      box.position.y = 0.4;
+      g.add(box);
+      if (hash(r.s + 5) > 0.5) { const top = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.8), baleMat); top.position.set(0.1, 1.15, 0); g.add(top); }
+      g.rotation.y = (hash(r.s) - 0.5) * 0.6;
+      return g;
+    },
+    cone() {
+      const g = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.5), coneBase);
+      base.position.y = 0.025;
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.62, 12), coneMat);
+      cone.position.y = 0.36;
+      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.145, 0.1, 12), coneWhite);
+      stripe.position.y = 0.3;
+      g.add(base, cone, stripe);
+      return g;
+    },
+  };
   const rockMeshes = track.rocks.map((r) => {
-    const mesh = new THREE.Mesh(rockGeo, rockMat);
+    const mesh = mk[r.kind](r);
     pointAt(r.s, p);
     const y = terrainAt(r.s) + rampAt(r.s) - (r.lat * Math.tan(bankAt(r.s)));
-    mesh.position.set(p.x + Math.cos(p.theta) * r.lat, y + 0.25, p.z + Math.sin(p.theta) * r.lat);
-    mesh.scale.set(1 + hash(r.s) * 0.5, 0.9 + hash(r.s + 3) * 0.6, 1 + hash(r.s + 7) * 0.5);
-    mesh.rotation.y = hash(r.s + 1) * 6;
-    mesh.castShadow = true;
+    mesh.position.x += p.x + Math.cos(p.theta) * r.lat;
+    mesh.position.z += p.z + Math.sin(p.theta) * r.lat;
+    mesh.position.y += y + (r.kind === 'rock' ? 0.25 : 0);
+    if (r.kind !== 'rock') {
+      mesh.rotation.y += -p.theta;
+      mesh.rotation.x = Math.atan(track.slopeAt(r.s));
+      mesh.rotation.order = 'YXZ';
+    }
+    mesh.traverse((o) => { o.castShadow = true; });
     group.add(mesh);
     return mesh;
   });
+
+  // ---- Pfützen, Matsch, Sand (folgen dem Gelände) ----
+  const patchLook = {
+    puddle: { color: 0x3b6f9c, rough: 0.05, metal: 0.4, opacity: 0.82, ring: 0x2a4f70 },
+    mud: { color: 0x4a3120, rough: 0.9, metal: 0, opacity: 0.95, ring: 0x35231a },
+    sand: { color: 0xe3c98a, rough: 1, metal: 0, opacity: 0.97, ring: 0xc8ad6c },
+  };
+  const patchMats = {};
+  for (const k of Object.keys(patchLook)) {
+    const l = patchLook[k];
+    patchMats[k] = new THREE.MeshStandardMaterial({ color: l.color, roughness: l.rough, metalness: l.metal, transparent: true, opacity: l.opacity, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, depthWrite: false });
+  }
+  for (const pt of track.patches) {
+    const NX = 14, NZ = 8;
+    const pos = new Float32Array((NX + 1) * (NZ + 1) * 3);
+    for (let i = 0; i <= NX; i++) {
+      for (let j = 0; j <= NZ; j++) {
+        const u = (i / NX) * 2 - 1, v = (j / NZ) * 2 - 1;
+        const x = u * Math.sqrt(1 - (v * v) / 2), z = v * Math.sqrt(1 - (u * u) / 2); // Quadrat → Scheibe
+        const ss = pt.s + x * (pt.len / 2), lt = pt.lat + z * pt.r;
+        pointAt(ss, p);
+        const k = (i * (NZ + 1) + j) * 3;
+        pos[k] = p.x + Math.cos(p.theta) * lt;
+        pos[k + 2] = p.z + Math.sin(p.theta) * lt;
+        pos[k + 1] = track.heightAt(ss) - lt * Math.tan(bankAt(ss)) + 0.05;
+      }
+    }
+    const idx = [];
+    for (let i = 0; i < NX; i++) for (let j = 0; j < NZ; j++) { const a2 = i * (NZ + 1) + j, b2 = a2 + 1, c2 = a2 + NZ + 1, d2 = c2 + 1; idx.push(a2, b2, c2, b2, d2, c2); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, patchMats[pt.kind]);
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+
+  // ---- Leuchtstreifen am Rand (Abendstimmung) ----
+  if (map.neon) {
+    const post = new THREE.BoxGeometry(0.07, 0.3, 0.07);
+    const nm = new THREE.MeshBasicMaterial({ color: map.neon });
+    const gap = 4;
+    const cnt = Math.floor(range / gap);
+    const mesh = new THREE.InstancedMesh(post, nm, cnt * 2);
+    const m4 = new THREE.Matrix4();
+    let k = 0;
+    for (let i = 0; i < cnt; i++) {
+      const ss = track.meshFrom + i * gap + 1;
+      pointAt(ss, p);
+      for (const sx of [-1, 1]) {
+        const lt = sx * (hw + 0.7);
+        const y = track.terrainAt(ss) + bankH(lt) - lt * Math.tan(bankAt(ss)) + 0.22;
+        m4.makeTranslation(p.x + Math.cos(p.theta) * lt, y, p.z + Math.sin(p.theta) * lt);
+        mesh.setMatrixAt(k++, m4);
+      }
+    }
+    mesh.frustumCulled = false;
+    group.add(mesh);
+  }
 
   // ---- Boost-Felder ----
   const padTex = canvasTexture(64, 96, (g, w, h) => {
@@ -313,7 +459,7 @@ export function buildTrackMesh(track, quality = 'high') {
     }
   });
   const padMat = new THREE.MeshBasicMaterial({ map: padTex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const padGeo = new THREE.PlaneGeometry(2.8, 4.2);
+  const padGeo = new THREE.PlaneGeometry(2.0, 3.2);
   const padMeshes = track.pads.map((pd) => {
     const holder = new THREE.Group();
     holder.rotation.order = 'YXZ';
@@ -355,8 +501,12 @@ export function buildTrackMesh(track, quality = 'high') {
     holder.rotation.y = -p.theta;
     group.add(holder);
   }
-  arch(0, 'START', false);
-  arch(track.length, 'ZIEL', true);
+  if (track.loop) {
+    arch(0, 'START · ZIEL', true);
+  } else {
+    arch(0, 'START', false);
+    arch(track.length, 'ZIEL', true);
+  }
 
   return { group, rockMeshes, padMeshes };
 }

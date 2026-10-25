@@ -9,11 +9,12 @@ const level = LEVELS.find((l) => l.id === process.argv[2]) || PERFECT;
 for (const map of MAPS) {
   for (const cat of Object.keys(CATEGORIES)) {
     const bike = resolveBike({ ...DEFAULT_CONFIG, cat, brand: 'alpina' });
-    const track = buildTrack(map);
+    const laps = map.loop ? 2 : 1;
+    const track = buildTrack(map, laps);
     const sim = new BikeSim(track, bike);
     const drv = new AIDriver(level, mulberry32(5), track, 0);
     let time = 0, jumps = 0, rocks = 0, pads = 0, maxAir = 0, vmax = 0, off = 0, hard = 0, vsum = 0;
-    while (!sim.finished && time < 400) {
+    while (!sim.finished && time < 3000) {
       for (const e of sim.step(1 / 60, drv.control(sim, 1 / 60))) {
         if (e.type === 'jump') jumps++;
         if (e.type === 'rock') rocks++;

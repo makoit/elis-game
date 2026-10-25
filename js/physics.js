@@ -2,6 +2,7 @@
 // und hat eine Höhe (y) mit Sprung-Physik. v ist die Geschwindigkeit entlang der Strecke.
 
 export const G = 26;
+export const LAT_SPEED = 6; // max. Seitengeschwindigkeit bei vollem Lenkeinschlag (m/s)
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -27,12 +28,16 @@ export class BikeSim {
     this.speedFactor = 1;
     this.rockHit = new Set(); // pro Fahrer, damit mehrere Räder dieselbe Strecke nutzen können
     this.padUsed = new Set();
+    this.patchIn = new Set(); // Pfützen/Matsch, in denen das Rad gerade steht
+    this.lap = 0;
+    this.assist = 0; // Lenkhilfe 0..1 (weniger Fliehkraft, sanftes Zurückhalten auf der Strecke)
   }
 
   step(dt, c) {
     const { t, b } = this;
     const ev = this.events;
     ev.length = 0;
+    const ws = t.wrap(this.s); // Position innerhalb der Runde (Hindernisse gelten pro Runde)
     const grip = b.surface[t.map.surface];
     const vmax = b.vmax * grip * (this.speedFactor || 1);
     this.offroad = Math.abs(this.lat) > t.halfW;
@@ -52,15 +57,34 @@ export class BikeSim {
       a -= 0.001 * this.v * this.v;
     }
     if (this.boost > 0) { a += 9; this.boost -= dt; }
+    let latGrip = 1;
+    if (!this.air) {
+      for (const pt of t.patches) {
+        if (Math.abs(pt.s - ws) > pt.len / 2 + 1) continue;
+        if (Math.abs(ws - pt.s) < pt.len / 2 && Math.abs(this.lat - pt.lat) < pt.r) {
+          a -= pt.drag * Math.min(1, 0.4 + this.v / 12);
+          latGrip = Math.min(latGrip, pt.grip);
+          if (!this.patchIn.has(pt)) { this.patchIn.add(pt); ev.push({ type: 'patch', patch: pt }); }
+        } else this.patchIn.delete(pt);
+      }
+    }
     this.v = Math.max(0, this.v + a * dt);
 
     // --- Seitliche Bewegung ---
     // Fliehkraft: in Kurven wird man nach außen getragen (Querneigung der Strecke hilft etwas)
     const kappa = t.curvAt(this.s);
-    this.drift = clamp(kappa * this.v * this.v * 0.13 * (this.air ? 0.4 : 1), -9, 9);
+    let drift = kappa * this.v * this.v * 0.13 * (this.air ? 0.4 : 1);
+    if (t.map.berm) drift *= 1 - 0.55 * Math.min(1, Math.abs(t.bankAt(this.s)) / t.bankMax); // Steilkurven (Anlieger) tragen
+    drift *= 1 - 0.4 * this.assist;
+    this.drift = clamp(drift, -6.5, 6.5);
     this.kappa = kappa;
-    const steer = c.steer * b.steer * (0.35 + 0.65 * Math.min(1, this.v / 10)) * (this.air ? 0.5 : 1);
-    this.latV += (steer * 11 - this.drift - this.latV) * Math.min(1, dt * (this.air ? 2 : 7));
+    let steerIn = c.steer;
+    if (this.assist > 0 && !this.air) { // sanft zur Strecke zurück, wenn man neben der Piste fährt
+      const over = Math.abs(this.lat) - (t.halfW - 0.6);
+      if (over > 0) steerIn -= Math.sign(this.lat) * Math.min(0.6, over * 0.25) * this.assist;
+    }
+    const steer = clamp(steerIn, -1, 1) * b.steer * (0.35 + 0.65 * Math.min(1, this.v / 10)) * (this.air ? 0.5 : 1);
+    this.latV += (steer * LAT_SPEED * latGrip - this.drift - this.latV) * Math.min(1, dt * (this.air ? 2 : 7) * (0.5 + 0.5 * latGrip));
     this.lat += this.latV * dt;
     const lim = t.halfW + 3.5;
     if (Math.abs(this.lat) > lim) {
@@ -73,6 +97,7 @@ export class BikeSim {
     const vyGround = this.v * this.slope;
     this.s = Math.min(this.s + this.v * dt, t.end - 1);
     const ground = t.heightAt(this.s);
+    const wsn = t.wrap(this.s);
 
     if (!this.air) {
       const ballistic = this.y + vyGround * dt - 0.5 * G * dt * dt;
@@ -100,17 +125,17 @@ export class BikeSim {
 
     // --- Hindernisse ---
     for (const r of t.rocks) {
-      if (this.rockHit.has(r) || Math.abs(r.s - this.s) > 1.2) continue;
-      if (Math.abs(r.lat - this.lat) < 0.95 && this.y - ground < 0.9) {
+      if (this.rockHit.has(r) || Math.abs(r.s - wsn) > 1.2 + (r.len || 0)) continue;
+      if (Math.abs(r.lat - this.lat) < r.hw + 0.05 && this.y - ground < r.h) {
         this.rockHit.add(r);
-        this.v *= 1 - 0.45 * (1 - b.sturdy * 0.6);
+        this.v *= 1 - r.slow * (1 - b.sturdy * 0.6);
         ev.push({ type: 'rock', rock: r });
       }
     }
     if (!this.air) {
       for (const p of t.pads) {
-        if (this.padUsed.has(p) || Math.abs(p.s - this.s) > 2) continue;
-        if (Math.abs(p.lat - this.lat) < 1.7) {
+        if (this.padUsed.has(p) || Math.abs(p.s - wsn) > 2) continue;
+        if (Math.abs(p.lat - this.lat) < 1.3) {
           this.padUsed.add(p);
           this.boost = 0.9;
           ev.push({ type: 'pad', pad: p });
@@ -118,6 +143,12 @@ export class BikeSim {
       }
     }
 
+    const lap = Math.floor(this.s / t.lapLength);
+    if (lap > this.lap && lap < t.laps && !this.finished) {
+      this.lap = lap;
+      this.rockHit.clear(); this.padUsed.clear(); this.patchIn.clear();
+      ev.push({ type: 'lap', lap });
+    }
     if (!this.finished && this.s >= t.length) {
       this.finished = true;
       ev.push({ type: 'finish' });

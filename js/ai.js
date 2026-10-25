@@ -1,5 +1,7 @@
 // Computergegner (und Autopilot für die Referenzzeit). Reine Logik, kein Three.js.
 
+import { LAT_SPEED } from './physics.js';
+
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
 // speed: Anteil der Leistung des Rades, mistakes: Fehler pro Sekunde, look: Vorausschau auf Felsen (0..1)
@@ -13,7 +15,7 @@ export const PERFECT = { id: 'perfect', name: 'Autopilot', speed: 1, mistakes: 0
 
 // Lenkbefehl, damit das Rad die Seitenlage `targetLat` ansteuert (inkl. Ausgleich der Fliehkraft)
 export function steerToward(sim, targetLat) {
-  const maxLatV = 11 * sim.b.steer * (0.35 + 0.65 * Math.min(1, sim.v / 10));
+  const maxLatV = LAT_SPEED * sim.b.steer * (0.35 + 0.65 * Math.min(1, sim.v / 10));
   const wanted = clamp((targetLat - sim.lat) * 1.6, -9, 9) + sim.drift;
   return clamp(wanted / (maxLatV || 1), -1, 1);
 }
@@ -34,22 +36,26 @@ export class AIDriver {
     const hw = track.halfW;
     let target = clamp(this.lane, -hw + 1.5, hw - 1.5);
 
-    // Felsen ausweichen
+    // Hindernissen ausweichen (Position innerhalb der Runde)
+    const ws = track.wrap(sim.s);
     const look = (14 + sim.v * 0.9) * level.look;
     for (const r of track.rocks) {
-      if (sim.rockHit.has(r) || r.s < sim.s - 1 || r.s > sim.s + look) continue;
-      if (Math.abs(r.lat - target) < 2.0) {
-        const room = r.lat > 0 ? r.lat + hw : hw - r.lat; // Platz links bzw. rechts
-        target = r.lat + (r.lat > 0 ? -1 : 1) * 2.4 * (room > 0 ? 1 : 1);
-        target = clamp(target, -hw + 1, hw - 1);
+      if (sim.rockHit.has(r) || r.s < ws - 1 || r.s > ws + look) continue;
+      if (r.kind === 'cone' && level.look < 0.9) continue; // Kegel werfen nur um
+      const clear = r.hw + 1.1;
+      if (Math.abs(r.lat - target) < clear) {
+        const left = r.lat - clear, right = r.lat + clear; // links / rechts vorbei
+        const okL = left > -hw + 0.8, okR = right < hw - 0.8;
+        target = okL && okR ? (Math.abs(left - target) < Math.abs(right - target) ? left : right) : okL ? left : right;
+        target = clamp(target, -hw + 0.8, hw - 0.8);
         break;
       }
     }
     // Boost-Felder mitnehmen
     if (rng() < level.pads) {
       for (const p of track.pads) {
-        if (sim.padUsed.has(p) || p.s < sim.s + 4 || p.s > sim.s + 45) continue;
-        if (Math.abs(p.lat - target) < 4.5 && !track.rocks.some((r) => !sim.rockHit.has(r) && Math.abs(r.s - p.s) < 6 && Math.abs(r.lat - p.lat) < 2.2)) target = p.lat;
+        if (sim.padUsed.has(p) || p.s < ws + 4 || p.s > ws + 45) continue;
+        if (Math.abs(p.lat - target) < 4.5 && !track.rocks.some((r) => !sim.rockHit.has(r) && Math.abs(r.s - p.s) < 6 && Math.abs(r.lat - p.lat) < r.hw + 1.3)) target = p.lat;
         break;
       }
     }
@@ -68,13 +74,13 @@ export class AIDriver {
     // vor engen Kurven bremsen, wenn die Fliehkraft nicht mehr auszugleichen ist
     const aheadK = Math.abs(track.curvAt(sim.s + sim.v * 0.6));
     const need = aheadK * sim.v * sim.v * 0.13;
-    const have = 11 * sim.b.steer * 0.85;
+    const have = LAT_SPEED * sim.b.steer * 0.85;
     const brake = need > have && sim.v > 15 && !sim.air;
 
     // Gummiband für leichte Stufen
     sim.speedFactor = level.speed;
     if (level.rubber && playerS != null) {
-      const gap = sim.s - playerS;
+      const gap = sim.s - playerS; // Gesamtstrecke (mit Runden)
       if (gap > 60) sim.speedFactor *= 0.93;
       else if (gap < -90) sim.speedFactor *= 1.06;
     }

@@ -87,3 +87,19 @@ export function createClouds(count = 14, seed = 1) {
   }
   return group;
 }
+
+// Sternenhimmel (Nacht-Strecken)
+export function createStars(seed = 1, count = 500) {
+  let s = seed * 3571;
+  const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const a = rnd() * Math.PI * 2, el = 0.12 + rnd() * 1.4;
+    pos[i * 3] = Math.cos(a) * Math.cos(el) * 430; pos[i * 3 + 1] = Math.sin(el) * 430; pos[i * 3 + 2] = Math.sin(a) * Math.cos(el) * 430;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false }));
+  pts.frustumCulled = false;
+  return pts;
+}
