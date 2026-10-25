@@ -1,0 +1,12 @@
+# Veröffentlicht das Spiel (statische Dateien, kein Build) auf GitLab Pages.
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - mkdir public
+    - cp -r index.html css js assets public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

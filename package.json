@@ -1,0 +1,1 @@
+{ "name": "elis-game", "private": true, "type": "module", "scripts": { "start": "npx serve .", "sim": "node tools/sim.mjs" } }

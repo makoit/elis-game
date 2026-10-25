@@ -2,11 +2,11 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-  <title>Mein Spiel</title>
-  <style>
-    body { margin: 0; overflow: hidden; touch-action: none; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Elis Bike Race</title>
+  <link rel="stylesheet" href="./css/style.css">
   <script type="importmap">
   {
     "imports": {
@@ -17,6 +17,76 @@
   </script>
 </head>
 <body>
+  <div id="ui">
+    <!-- 1) Fahrrad wählen -->
+    <section id="screen-bike" class="screen">
+      <h1>🚲 Wähle dein Rad</h1>
+      <div id="bike-stats" class="panel stats"></div>
+      <div class="bottom">
+        <div id="color-row" class="colors"></div>
+        <div id="bike-cards" class="cards"></div>
+        <div class="actions"><button id="btn-to-maps" class="btn primary">Weiter ▶</button></div>
+      </div>
+    </section>
+
+    <!-- 2) Strecke wählen -->
+    <section id="screen-map" class="screen">
+      <h1>🗺️ Wähle die Strecke</h1>
+      <div id="map-cards" class="cards big"></div>
+      <div class="actions row">
+        <button id="btn-back-bike" class="btn">◀ Zurück</button>
+        <label class="toggle"><input type="checkbox" id="chk-autogas"> Auto-Gas <small>(Rad tritt von allein)</small></label>
+        <button id="btn-start" class="btn primary">Los geht's 🏁</button>
+      </div>
+    </section>
+
+    <!-- Rennen: HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="chip" id="hud-time">0:00.00</div>
+        <div class="progress"><div class="track"><span id="hud-bike">🚲</span></div></div>
+        <div class="chip" id="hud-speed">0 km/h</div>
+        <button id="btn-mute" class="icon-btn" aria-label="Ton">🔊</button>
+        <button id="btn-pause" class="icon-btn" aria-label="Pause">⏸</button>
+      </div>
+      <div id="countdown"></div>
+    </div>
+
+    <!-- Rennen: Touch-Steuerung -->
+    <div id="touch" class="hidden">
+      <div class="pad left">
+        <button data-touch="left" class="tbtn">◀</button>
+        <button data-touch="right" class="tbtn">▶</button>
+      </div>
+      <div class="pad right">
+        <button data-touch="brake" class="tbtn brake">BREMSE</button>
+        <button data-touch="gas" class="tbtn gas">GAS</button>
+      </div>
+    </div>
+
+    <!-- Pause -->
+    <section id="screen-pause" class="screen overlay">
+      <div class="dialog">
+        <h2>⏸ Pause</h2>
+        <button id="btn-resume" class="btn primary">Weiter</button>
+        <button id="btn-restart" class="btn">Neustart</button>
+        <button id="btn-quit" class="btn">Zum Menü</button>
+      </div>
+    </section>
+
+    <!-- Ergebnis -->
+    <section id="screen-result" class="screen overlay">
+      <div class="dialog">
+        <h2>🏁 Im Ziel!</h2>
+        <div id="result-stars" class="stars"></div>
+        <div id="result-time" class="big-time"></div>
+        <div id="result-best" class="muted"></div>
+        <button id="btn-again" class="btn primary">Nochmal</button>
+        <button id="btn-other-map" class="btn">Andere Strecke</button>
+        <button id="btn-other-bike" class="btn">Anderes Rad</button>
+      </div>
+    </section>
+  </div>
   <script type="module" src="./js/main.js"></script>
 </body>
 </html>
