@@ -34,3 +34,28 @@ export const sfx = {
   jump() { tone(300, 0.15, 'sine', 0.1, 300); },
   finish() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.3, 'triangle', 0.18), i * 130)); },
 };
+
+// Windrauschen, das mit dem Tempo lauter wird
+let wind = null;
+sfx.wind = function (speed) {
+  if (!ctx) return;
+  if (!wind) {
+    const len = ctx.sampleRate * 2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass'; filter.frequency.value = 500; filter.Q.value = 0.6;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start();
+    wind = { gain, filter };
+  }
+  const v = muted ? 0 : Math.min(1, speed / 40);
+  wind.gain.gain.setTargetAtTime(v * v * 0.25, ctx.currentTime, 0.1);
+  wind.filter.frequency.setTargetAtTime(300 + v * 1400, ctx.currentTime, 0.1);
+};
+sfx.windOff = function () { if (wind && ctx) wind.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.1); };

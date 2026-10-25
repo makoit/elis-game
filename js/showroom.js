@@ -1,18 +1,22 @@
 import * as THREE from 'three';
-import { createBike, BIKE_COLORS } from './bikes.js';
+import { createBike } from './bikes.js';
+import { createSky, createEnvMap } from './env.js';
 import { disposeObject } from './trackmesh.js';
 
 // Schaufenster für die Fahrradauswahl: das Rad dreht sich auf einer Scheibe.
 export class Showroom {
-  constructor() {
+  constructor(renderer) {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x24324f);
-    this.scene.fog = new THREE.Fog(0x24324f, 8, 22);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x445577, 1.9));
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    this.scene.fog = new THREE.Fog(0x24324f, 9, 24);
+    const sky = { top: 0x2a4a86, horizon: 0xcfe3ff, ground: 0x20283f, sunDir: new THREE.Vector3(0.6, 0.5, 0.7) };
+    this.scene.environment = createEnvMap(renderer, sky);
+    this.scene.environmentIntensity = 1.0;
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x445577, 0.6));
+    const key = new THREE.DirectionalLight(0xfff2dd, 2.4);
     key.position.set(3, 5, 4);
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x88aaff, 1.2);
+    const rim = new THREE.DirectionalLight(0x88aaff, 1.4);
     rim.position.set(-4, 3, -3);
     this.scene.add(rim);
 
@@ -34,9 +38,9 @@ export class Showroom {
     this.resize();
   }
 
-  setBike(def, color = def.color) {
+  setBike(def) {
     if (this.model) { this.turntable.remove(this.model.group); disposeObject(this.model.group); }
-    this.model = createBike(def, color);
+    this.model = createBike(def, { shadows: false });
     this.turntable.add(this.model.group);
   }
 
@@ -58,4 +62,3 @@ export class Showroom {
   }
 }
 
-export { BIKE_COLORS };

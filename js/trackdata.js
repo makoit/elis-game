@@ -56,15 +56,52 @@ export function buildTrack(map) {
     return out;
   }
 
-  const rampLen = (r) => ({ lu: r.h / r.up, ld: r.h / r.down });
+  // Schanzen: "lip" = Steigung an der Abflugkante, die Auffahrt ist nach oben gebogen (wie ein echter Kicker).
+  //  kicker: Rampe, danach sanfter Abhang | table: Rampe, flache Platte (top), dann Abhang
+  //  double: Rampe, Lücke (gap), Landehügel (h2) mit langem Abhang
+  const P = 1.5;
+  const rampShape = (r) => {
+    const lu = (P * r.h) / r.lip;
+    const down = r.down || 0.18;
+    let after;
+    if (r.type === 'double') {
+      const h2 = r.h2 || r.h * 0.9;
+      const lm = h2 / 0.7;
+      after = r.gap + lm + h2 / down;
+    } else if (r.type === 'table') after = r.top + r.h / down;
+    else after = r.h / down;
+    return { lu, after, down };
+  };
+  const rampSpan = (r) => { const sh = rampShape(r); return [r.s - sh.lu, r.s + sh.after]; };
+
+  function rampHeight(r, s) {
+    const { lu, down } = rampShape(r);
+    const d = s - r.s;
+    if (d <= -lu) return 0;
+    if (d <= 0) return r.h * Math.pow(1 + d / lu, P);
+    if (r.type === 'kicker') return d < r.h / down ? r.h * (1 - d / (r.h / down)) : 0;
+    if (r.type === 'table') {
+      if (d <= r.top) return r.h;
+      const ld = r.h / down;
+      return d < r.top + ld ? r.h * (1 - (d - r.top) / ld) : 0;
+    }
+    if (r.type === 'double') {
+      const h2 = r.h2 || r.h * 0.9;
+      const lm = h2 / 0.7;
+      const ld = h2 / down;
+      if (d < r.gap) return 0;
+      if (d < r.gap + lm) return h2 * ((d - r.gap) / lm);
+      return d < r.gap + lm + ld ? h2 * (1 - (d - r.gap - lm) / ld) : 0;
+    }
+    return 0;
+  }
 
   function rampAt(s) {
     let y = 0;
-    for (const r of map.ramps) {
-      const { lu, ld } = rampLen(r);
-      const d = s - r.s;
-      if (d > -lu && d <= 0) y += r.h * (1 + d / lu);
-      else if (d > 0 && d < ld) y += r.h * (1 - d / ld);
+    for (const r of map.ramps) y += rampHeight(r, s);
+    for (const w of map.whoops || []) {
+      const d = s - w.s;
+      if (d > 0 && d < w.n * w.wl) y += w.amp * 0.5 * (1 - Math.cos((TAU * d) / w.wl));
     }
     return y;
   }
@@ -76,6 +113,10 @@ export function buildTrack(map) {
     return y;
   }
 
+  // Krümmung (rad/m, positiv = Rechtskurve) und Querneigung der Kurven
+  const curvAt = (s) => (pointAt(s + 1).theta - pointAt(s - 1).theta) / 2;
+  const bankAt = (s) => Math.max(-0.25, Math.min(0.25, curvAt(s) * 10));
+
   const heightAt = (s) => terrainAt(s) + rampAt(s);
   const slopeAt = (s) => (heightAt(s + 0.25) - heightAt(s - 0.25)) / 0.5;
 
@@ -85,12 +126,8 @@ export function buildTrack(map) {
     return a > 0 ? Math.pow(a, 1.3) * 0.25 : 0;
   };
 
-  const inRampZone = (s, before = 6, after = 14) =>
-    map.ramps.some((r) => {
-      const { lu, ld } = rampLen(r);
-      const d = s - r.s;
-      return d > -lu - before && d < ld + after;
-    });
+  const spans = [...map.ramps.map(rampSpan), ...(map.whoops || []).map((w) => [w.s, w.s + w.n * w.wl])];
+  const inRampZone = (s, before = 8, after = 16) => spans.some(([a, b]) => s > a - before && s < b + after);
 
   // Hindernisse und Boost-Felder
   const rocks = [];
@@ -110,10 +147,7 @@ export function buildTrack(map) {
   }
 
   const pads = [];
-  for (const r of map.ramps) {
-    const { lu } = rampLen(r);
-    pads.push({ s: r.s - lu - 10, lat: 0, used: false });
-  }
+  for (const r of map.ramps) pads.push({ s: rampSpan(r)[0] - 16, lat: 0, used: false });
   if (map.pads > 0) {
     const gap = 1 / map.pads;
     let s = 60;
@@ -127,7 +161,7 @@ export function buildTrack(map) {
 
   return {
     map, halfW, length: map.length, end,
-    pointAt, heightAt, terrainAt, rampAt, slopeAt, bankH, rampLen,
+    pointAt, heightAt, terrainAt, rampAt, slopeAt, bankH, curvAt, bankAt, rampSpan,
     rocks, pads,
   };
 }

@@ -1,7 +1,7 @@
 // Fahrphysik (ohne Three.js). Das Rad bewegt sich entlang der Strecke (s), seitlich (lat)
 // und hat eine Höhe (y) mit Sprung-Physik. v ist die Geschwindigkeit entlang der Strecke.
 
-export const G = 20;
+export const G = 26;
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -22,6 +22,11 @@ export class BikeSim {
     this.finished = false;
     this.events = [];
     this.slope = 0;
+    this.drift = 0;
+    this.kappa = 0;
+    this.speedFactor = 1;
+    this.rockHit = new Set(); // pro Fahrer, damit mehrere Räder dieselbe Strecke nutzen können
+    this.padUsed = new Set();
   }
 
   step(dt, c) {
@@ -29,35 +34,39 @@ export class BikeSim {
     const ev = this.events;
     ev.length = 0;
     const grip = b.surface[t.map.surface];
-    const vmax = b.vmax * grip;
+    const vmax = b.vmax * grip * (this.speedFactor || 1);
     this.offroad = Math.abs(this.lat) > t.halfW;
     this.slope = t.slopeAt(this.s);
 
     // --- Längsbewegung ---
     let a = 0;
     if (!this.air) {
-      if (c.gas) a += Math.max(0, b.accel * grip * (1 - this.v / vmax));
+      if (c.gas) a += Math.max(0, b.accel * grip * (this.speedFactor || 1) * (1 - this.v / vmax));
       if (c.brake) a -= b.brake;
       const sl = clamp(this.slope, -0.35, 0.22);
       a -= ((G * sl) / Math.sqrt(1 + sl * sl)) * (sl < 0 ? b.slopeK : 1);
-      a -= 0.25 + 0.0035 * this.v * this.v;
-      if (this.v > vmax) a -= (this.v - vmax) * 0.5; // Tempolimit-Gefühl: Überschuss (Boost, Gefälle) baut sich ab
-      if (this.offroad) a -= 1.0 + (1 - b.terrain) * 6 + 0.1 * this.v * (1 - b.terrain);
+      a -= 0.3 + 0.0012 * this.v * this.v;
+      if (this.v > vmax) a -= (this.v - vmax) * 0.5; // Überschuss (Boost, Gefälle) baut sich ab
+      if (this.offroad) a -= 2 + (1 - b.terrain) * 9 + 0.15 * this.v * (1 - b.terrain);
     } else {
-      a -= 0.003 * this.v * this.v;
+      a -= 0.001 * this.v * this.v;
     }
-    if (this.boost > 0) { a += 8; this.boost -= dt; }
+    if (this.boost > 0) { a += 9; this.boost -= dt; }
     this.v = Math.max(0, this.v + a * dt);
 
     // --- Seitliche Bewegung ---
-    const steer = c.steer * b.steer * (0.35 + 0.65 * Math.min(1, this.v / 7)) * (this.air ? 0.5 : 1);
-    this.latV += (steer * 7 - this.latV) * Math.min(1, dt * (this.air ? 2 : 7));
+    // Fliehkraft: in Kurven wird man nach außen getragen (Querneigung der Strecke hilft etwas)
+    const kappa = t.curvAt(this.s);
+    this.drift = clamp(kappa * this.v * this.v * 0.13 * (this.air ? 0.4 : 1), -9, 9);
+    this.kappa = kappa;
+    const steer = c.steer * b.steer * (0.35 + 0.65 * Math.min(1, this.v / 10)) * (this.air ? 0.5 : 1);
+    this.latV += (steer * 11 - this.drift - this.latV) * Math.min(1, dt * (this.air ? 2 : 7));
     this.lat += this.latV * dt;
     const lim = t.halfW + 3.5;
     if (Math.abs(this.lat) > lim) {
       this.lat = Math.sign(this.lat) * lim;
       this.latV = 0;
-      this.v *= 1 - 0.8 * dt;
+      this.v *= 1 - 1.5 * dt;
     }
 
     // --- Vorwärts + Höhe ---
@@ -84,25 +93,25 @@ export class BikeSim {
         const rel = -(this.vy - this.v * t.slopeAt(this.s));
         this.air = false;
         this.y = ground;
-        if (rel > 5) this.v *= 1 - clamp((rel - 5) * 0.03 * (1 - b.susp * 0.8), 0, 0.35);
+        if (rel > 6) this.v *= 1 - clamp((rel - 6) * 0.018 * (1 - b.susp * 0.8), 0, 0.35);
         if (this.airTime > 0.15) ev.push({ type: 'land', impact: rel, airTime: this.airTime });
       }
     }
 
     // --- Hindernisse ---
     for (const r of t.rocks) {
-      if (r.hit || Math.abs(r.s - this.s) > 1.2) continue;
+      if (this.rockHit.has(r) || Math.abs(r.s - this.s) > 1.2) continue;
       if (Math.abs(r.lat - this.lat) < 0.95 && this.y - ground < 0.9) {
-        r.hit = true;
+        this.rockHit.add(r);
         this.v *= 1 - 0.45 * (1 - b.sturdy * 0.6);
         ev.push({ type: 'rock', rock: r });
       }
     }
     if (!this.air) {
       for (const p of t.pads) {
-        if (p.used || Math.abs(p.s - this.s) > 2) continue;
+        if (this.padUsed.has(p) || Math.abs(p.s - this.s) > 2) continue;
         if (Math.abs(p.lat - this.lat) < 1.7) {
-          p.used = true;
+          this.padUsed.add(p);
           this.boost = 0.9;
           ev.push({ type: 'pad', pad: p });
         }
