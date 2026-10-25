@@ -77,6 +77,7 @@ export const sfx = {
   jump() { tone(300, 0.15, 'sine', 0.1, 300); },
   lap() { [660, 880].forEach((f, i) => setTimeout(() => tone(f, 0.18, 'triangle', 0.16), i * 110)); },
   finish() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.3, 'triangle', 0.18), i * 130)); },
+  bump(k = 2) { tone(140, 0.16, 'square', Math.min(0.25, 0.08 + k * 0.03), -60); burst(0.12, 500, 0.9, Math.min(0.3, 0.1 + k * 0.03)); },
   clap() { burst(0.07, 1800, 0.9, 0.15); },
 };
 

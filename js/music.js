@@ -18,6 +18,7 @@ const STYLES = {
   canyon: { bpm: 134, key: 9, mode: 'minor', lead: 'sawtooth' },
   bikepark: { bpm: 124, key: 7, mode: 'minor', lead: 'sawtooth' },
   pumptrack: { bpm: 138, key: 4, mode: 'minor', lead: 'square' },
+  weinberg: { bpm: 116, key: 3, mode: 'major', lead: 'sine' }, // warm, gemütlich (Es-Dur)
 };
 
 let timer = null;

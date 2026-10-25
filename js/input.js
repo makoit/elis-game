@@ -1,4 +1,4 @@
-// Eingabe: Tastatur (Pfeile / WASD / Leertaste), Touch und optional Neigungssensor.
+// Eingabe: Tastatur (Pfeile / WASD / Leertaste, E = Wheelie), Touch und optional Neigungssensor.
 // Touch-Lenkung gibt es in drei Arten (Einstellungen):
 //   bar   Lenkleiste unten links: Finger auf die Leiste, Position = Lenkeinschlag (sichtbar, treffsicher – Standard)
 //   swipe irgendwo in der linken Hälfte hinsetzen und wischen (wie ein Lenker)
@@ -6,7 +6,7 @@
 // Der Lenkwert wird geglättet (tick), damit weder Tippen noch Zittern das Rad herumreißen.
 
 const keys = new Set();
-const touch = { gas: false, brake: false };
+const touch = { gas: false, brake: false, wheelie: false };
 const wheel = { active: false, id: null, x0: 0, steer: 0 }; // Swipe-Lenkung (analog)
 const bar = { active: false, id: null, steer: 0 }; // Lenkleiste
 const tilt = { on: false, value: 0, zero: null, listening: false };
@@ -42,6 +42,7 @@ export const input = {
   },
   get gas() { return this.autoGas || any('ArrowUp', 'KeyW', 'Space') || touch.gas; },
   get brake() { return any('ArrowDown', 'KeyS', 'ShiftLeft', 'ShiftRight') || touch.brake; },
+  get wheelie() { return any('KeyE', 'KeyQ') || touch.wheelie; },
   setMode(mode) {
     this.mode = mode;
     document.body.classList.remove('steer-bar', 'steer-swipe', 'steer-tilt');
@@ -93,6 +94,8 @@ export function initInput({ onPause, onRestart }) {
   window.addEventListener('blur', () => keys.clear());
 
   // Gas / Bremse
+  const wb = document.getElementById('t-wheelie');
+  if (wb && !wb.dataset.touch) wb.dataset.touch = 'wheelie'; // Wheelie-Knopf (halten)
   document.querySelectorAll('[data-touch]').forEach((el) => {
     const name = el.dataset.touch;
     const set = (v) => { touch[name] = v; el.classList.toggle('down', v); };
@@ -155,7 +158,7 @@ export function initInput({ onPause, onRestart }) {
 
 export function resetInput() {
   keys.clear();
-  touch.gas = touch.brake = false;
+  touch.gas = touch.brake = touch.wheelie = false;
   wheel.active = false; wheel.steer = 0; wheel.id = null;
   bar.active = false; bar.steer = 0; bar.id = null;
   input.smooth = 0;

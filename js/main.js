@@ -456,7 +456,7 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (race) {
     if (!paused) race.update(dt);
-    renderer.render(race.scene, race.camera);
+    race.render(dt);
   } else {
     showroom.update(dt);
     renderer.render(showroom.scene, showroom.camera);

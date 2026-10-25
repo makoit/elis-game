@@ -19,7 +19,7 @@ for (const map of MAPS) {
         if (e.type === 'jump') jumps++;
         if (e.type === 'rock') rocks++;
         if (e.type === 'pad') pads++;
-        if (e.type === 'land') { maxAir = Math.max(maxAir, e.airTime); if (e.impact > 12) hard++; }
+        if (e.type === 'land') { maxAir = Math.max(maxAir, e.airTime); if (e.impact > 8) hard++; }
       }
       if (sim.offroad) off++;
       vmax = Math.max(vmax, sim.v); vsum += sim.v;

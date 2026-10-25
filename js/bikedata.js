@@ -65,7 +65,7 @@ export const PARTS = {
     options: {
       slick: { name: 'Slick', desc: 'Schnell auf Asphalt', mod: { asphalt: 1.08, dirt: 0.78, terrain: -0.12 }, look: { tire: 0.022, tread: false } },
       allround: { name: 'Allround', desc: 'Für alles ein bisschen', mod: { asphalt: 1.0, dirt: 0.97 }, look: { tire: 0.035, tread: 'fine' } },
-      knobby: { name: 'Stollen', desc: 'Grip im Gelände', mod: { asphalt: 0.88, dirt: 1.05, terrain: 0.12, steer: 0.03 }, look: { tire: 0.06, tread: 'knobs' } },
+      knobby: { name: 'Stollen', desc: 'Grip im Gelände', mod: { asphalt: 0.88, dirt: 1.05, terrain: 0.12, steer: 0.03 }, look: { tire: 0.042, tread: 'knobs' } },
     },
   },
   wheels: {

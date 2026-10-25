@@ -22,6 +22,7 @@ Für Laptop (Tastatur) und Tablet (Touch, z. B. Amazon Fire Kids). Als App insta
 | Lenken | ← → / A D | **Lenkleiste** unten links (Finger auf die Leiste, Position = Einschlag), alternativ *Wischen* oder *Neigen* (Tablet wie ein Lenkrad kippen) – in den Einstellungen |
 | Gas | ↑ / W / Leertaste | automatisch (Auto-Gas) oder grüner GAS-Button |
 | Bremse | ↓ / S / Shift | roter BREMSE-Button |
+| Wheelie (halten) | E (oder Q) | lila ⤴ WHEELIE-Button über der Bremse |
 | Pause / Neustart | Esc oder P / R | ⏸-Button |
 
 Die Lenkung ist geglättet; in den Einstellungen gibt es Empfindlichkeit (Sanft/Normal/Direkt) und eine **Lenkhilfe** (weniger Fliehkraft, sanftes Zurückholen
@@ -58,9 +59,12 @@ js/trackdata.js               Streckenmathematik: Rundkurs-Schließung, Kurven, 
 js/trackmesh.js               Gelände, Texturen, Bäume, Hindernis-Modelle, Pfützen/Matsch/Sand, Neon-Streifen, Boost-Felder, Start/Ziel
 js/crowd.js                   Zuschauer (instanziert, jubeln, reagieren auf den Fahrer)
 js/env.js                     Himmel, Umgebungsreflexion, Berge, Wolken
-js/physics.js                 Fahrphysik (Gas, Gefälle, Fliehkraft, Sprünge)
+js/physics.js                 Fahrphysik: Tretleistung, Luft-/Rollwiderstand, Hangabtrieb, Kurven-Haftgrenze, Sprünge, Wheelie, Rempler, Hindernisse
 js/ai.js                      Computergegner + Schwierigkeitsstufen
 js/race.js                    Rennablauf, Kamera, Schatten, Minimap, HUD
+js/postfx.js                  Nachbearbeitung (nur Qualität „Hoch“): Bloom, Speed-Blur, Vignette, Color-Grading
+js/particles.js               Staub/Kies/Wasser/Funken-Partikel und Reifenspuren (ab „Mittel“)
+js/pbr.js                     lädt Foto-Texturen aus assets/textures (Poly Haven, CC0) für Boden und Piste (ab „Mittel“)
 js/showroom.js                Drehbühne in der Garage
 js/input.js                   Eingabe: Tastatur, Lenkleiste/Wischen/Neigen, Glättung
 js/sfx.js, js/music.js        Geräusche, Publikum-Jubel, Hintergrundmusik (alles WebAudio, keine Dateien)

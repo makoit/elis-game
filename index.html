@@ -39,6 +39,7 @@
         <span class="lbl">Gegner</span>
         <div id="level-chips" class="chips"></div>
       </div>
+      <p class="kbd-hint desktop-only">Lenken <kbd>←</kbd><kbd>→</kbd> · Gas <kbd>↑</kbd> · Bremse <kbd>↓</kbd> · Wheelie <kbd>E</kbd> · Pause <kbd>Esc</kbd></p>
       <div class="actions row">
         <button id="btn-settings" class="btn">⚙ Einstellungen</button>
         <button id="btn-to-garage" class="btn primary">Weiter ▶</button>
@@ -47,7 +48,7 @@
 
     <!-- 1) Garage -->
     <section id="screen-garage" class="screen menu garage-screen">
-      <h1>Garage</h1>
+      <h1>Garage <span class="step">2 / 3</span></h1>
       <div class="garage panel">
         <div class="bike-head"><div id="bike-title" class="bike-title"></div><div id="bike-sub" class="muted"></div></div>
         <div id="bike-stats" class="stats"></div>
@@ -70,17 +71,17 @@
 
     <!-- 2) Strecke wählen -->
     <section id="screen-map" class="screen menu">
-      <h1>Strecke</h1>
+      <h1>Strecke <span class="step">3 / 3</span></h1>
       <div id="map-cards" class="cards big"></div>
-      <div id="laps-row" class="levels">
-        <span class="lbl">Runden</span>
-        <button id="laps-minus" class="round-btn" aria-label="Weniger Runden">−</button>
-        <b id="laps-val" class="laps-val">3</b>
-        <button id="laps-plus" class="round-btn" aria-label="Mehr Runden">+</button>
-        <span id="laps-info" class="muted"></span>
-      </div>
-      <div class="actions row">
+      <div class="actions row map-actions">
         <button id="btn-back-garage" class="btn">◀ Zurück</button>
+        <div id="laps-row" class="levels">
+          <span class="lbl">Runden</span>
+          <button id="laps-minus" class="round-btn" aria-label="Weniger Runden">−</button>
+          <b id="laps-val" class="laps-val">3</b>
+          <button id="laps-plus" class="round-btn" aria-label="Mehr Runden">+</button>
+          <span id="laps-info" class="muted"></span>
+        </div>
         <button id="btn-start" class="btn primary">Los geht's 🏁</button>
       </div>
     </section>
@@ -127,6 +128,7 @@
       <div id="steer-bar"><span class="arrow l">◀</span><span class="arrow r">▶</span><i class="notch"></i><div id="steer-bar-knob"></div></div>
       <div class="tilt-hint"><span>⟲</span> Gerät wie ein Lenkrad kippen <span>⟳</span></div>
       <div class="pad right">
+        <button id="t-wheelie" data-touch="wheelie" class="tbtn wheelie" aria-label="Wheelie (halten)"><span class="ico">⤴</span>WHEELIE</button>
         <button data-touch="brake" class="tbtn brake">BREMSE</button>
         <button data-touch="gas" class="tbtn gas">GAS</button>
       </div>

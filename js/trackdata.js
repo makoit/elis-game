@@ -113,13 +113,14 @@ export function buildTrack(map, laps = 1) {
   //  kicker: Rampe, danach sanfter Abhang | table: Rampe, flache Platte (top), dann Abhang
   //  double: Rampe, Lücke (gap), Landehügel (h2) mit langem Abhang
   const P = 1.5;
+  const LAND_FACE = 0.45; // Steigung der Landehügel-Vorderseite (flacher = Zu-kurz-Springen tut weniger weh)
   const rampShape = (r) => {
     const lu = (P * r.h) / r.lip;
     const down = r.down || 0.18;
     let after;
     if (r.type === 'double') {
       const h2 = r.h2 || r.h * 0.9;
-      const lm = h2 / 0.7;
+      const lm = h2 / LAND_FACE;
       after = r.gap + lm + h2 / down;
     } else if (r.type === 'table') after = r.top + r.h / down;
     else after = r.h / down;
@@ -140,7 +141,7 @@ export function buildTrack(map, laps = 1) {
     }
     if (r.type === 'double') {
       const h2 = r.h2 || r.h * 0.9;
-      const lm = h2 / 0.7;
+      const lm = h2 / LAND_FACE;
       const ld = h2 / down;
       if (d < r.gap) return 0;
       if (d < r.gap + lm) return h2 * ((d - r.gap) / lm);

@@ -1,6 +1,6 @@
 // Computergegner (und Autopilot für die Referenzzeit). Reine Logik, kein Three.js.
 
-import { LAT_SPEED } from './physics.js';
+import { LAT_SPEED, cornerGrip } from './physics.js';
 
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 
@@ -15,7 +15,7 @@ export const PERFECT = { id: 'perfect', name: 'Autopilot', speed: 1, mistakes: 0
 
 // Lenkbefehl, damit das Rad die Seitenlage `targetLat` ansteuert (inkl. Ausgleich der Fliehkraft)
 export function steerToward(sim, targetLat) {
-  const maxLatV = LAT_SPEED * sim.b.steer * (0.35 + 0.65 * Math.min(1, sim.v / 10));
+  const maxLatV = LAT_SPEED * sim.b.steer * (0.35 + 0.65 * Math.min(1, sim.v / 6));
   const wanted = clamp((targetLat - sim.lat) * 1.6, -9, 9) + sim.drift;
   return clamp(wanted / (maxLatV || 1), -1, 1);
 }
@@ -72,10 +72,9 @@ export class AIDriver {
     steer = clamp(steer, -1, 1);
 
     // vor engen Kurven bremsen, wenn die Fliehkraft nicht mehr auszugleichen ist
-    const aheadK = Math.abs(track.curvAt(sim.s + sim.v * 0.6));
-    const need = aheadK * sim.v * sim.v * 0.13;
-    const have = LAT_SPEED * sim.b.steer * 0.85;
-    const brake = need > have && sim.v > 15 && !sim.air;
+    let need = 0;
+    for (const ahead of [0.4, 0.9, 1.5]) need = Math.max(need, Math.abs(track.curvAt(sim.s + sim.v * ahead)) * sim.v * sim.v);
+    const brake = need > cornerGrip(sim) * 1.05 && sim.v > 6 && !sim.air;
 
     // Gummiband für leichte Stufen
     sim.speedFactor = level.speed;
@@ -84,6 +83,13 @@ export class AIDriver {
       if (gap > 60) sim.speedFactor *= 0.93;
       else if (gap < -90) sim.speedFactor *= 1.06;
     }
-    return { gas: true, brake, steer };
+    // ab und zu ein Wheelie auf geraden, freien Stücken (nicht beim Autopiloten für die Sternzeiten)
+    let wheelie = false;
+    if (level !== PERFECT) {
+      this.wTime = (this.wTime || 0) - dt;
+      if (this.wTime <= 0 && rng() < dt * 0.05 && Math.abs(track.curvAt(sim.s + 10)) < 0.01 && !sim.air) this.wTime = 1 + rng() * 1.5;
+      wheelie = this.wTime > 0 && !brake;
+    }
+    return { gas: true, brake, steer, wheelie };
   }
 }
