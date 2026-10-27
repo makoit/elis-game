@@ -1261,21 +1261,27 @@ export function buildTrackMesh(track, quality = 'high') {
 
     if (!town) return { update: (dt) => animated.forEach((f) => f(dt)) };
 
-    // ---- Kai (Uferplattform) im Ort: vor den Häusern, Hafenbecken, Burg ----
+    // ---- Torri del Benaco (nach Ortsbeschreibungen): Altstadt am Kai, Palazzo della Gardesana mit Arkaden,
+    // Uhrturm, halbmondförmiger Hafen mit zwei Molen, Scaliger-Burg mit Limonaia an der Südseite, Fähranleger;
+    // auf der Bergseite Häuserzeile, Kirche Santi Pietro e Paolo mit Campanile.
+    const at = (f) => T.s0 + tl * f; // Position im Ort (0 = Ortsanfang, 1 = Ortsende)
     const quayTop = (s) => terrainAt(s) + 0.03;
     const quay = (a, b, l1) => band(a, b, (s) => [[side * (hw + 6.0), quayTop(s)], [side * l1, quayTop(s)], [side * l1, level - 2.5], [side * (hw + 6.0), level - 2.5]], 0xfff6e2);
-    const qA = T.s0 + tl * 0.42, qB = T.s0 + tl * 0.66;
+    const qA = at(0.4), qB = at(0.62);
     quay(T.s0 - 6, qA, hw + 19);
-    quay(qA, qB, hw + 10.5);
-    quay(qB, T.s1 + 6, hw + 35);
+    quay(qA, qB, hw + 12.5); // Hafenpromenade
+    const castleS = at(0.75), limEnd = Math.min(T.s1 + 4, castleS + 15 + 1.5 + 34); // Burg (Länge 30) + Limonaia
+    quay(qB, limEnd, hw + 38);
+    if (limEnd < T.s1 + 6) quay(limEnd, T.s1 + 6, hw + 16);
 
-    // ---- Häuser ----
-    const HB = { wall: [], roof: [], win: [], shut: [], wood: [], awn: [], stone: [] };
+    // ---- Bausteine ----
+    const HB = { wall: [], roof: [], win: [], shut: [], wood: [], awn: [], stone: [], iron: [], white: [] };
     const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), P0 = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1);
     const frameAt = (s, lat, y, rot = 0) => { worldAt(s, lat, wp); return M.compose(P0.set(wp.x, y, wp.z), Q.setFromAxisAngle(Y, -wp.theta + rot), ONE).clone(); };
     const put = (key, geo, Mx, color) => {
       const g = geo.index ? geo.toNonIndexed() : geo;
       if (g.attributes.uv) g.deleteAttribute('uv');
+      if (!g.attributes.normal) g.computeVertexNormals();
       g.applyMatrix4(Mx);
       const c = new THREE.Color(color);
       const arr = new Float32Array(g.attributes.position.count * 3);
@@ -1288,107 +1294,280 @@ export function buildTrackMesh(track, quality = 'high') {
       if (rotZ) g.rotateZ(rotZ);
       put(key, g.translate(x, y, z), Mx, color);
     };
-    const gable = (w, l, h, rh, ov = 0.35) => { // Satteldach, First entlang z
-      const hx = w / 2 + ov, hz = l / 2 + ov;
-      const Pv = [[-hx, h, -hz], [hx, h, -hz], [0, h + rh, -hz], [-hx, h, hz], [hx, h, hz], [0, h + rh, hz]];
-      const tri = [0, 2, 1, 3, 4, 5, 0, 3, 5, 0, 5, 2, 1, 2, 5, 1, 5, 4, 0, 1, 4, 0, 4, 3];
+    const tri = (P, idx) => {
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(tri.flatMap((i) => Pv[i]), 3));
+      g.setAttribute('position', new THREE.Float32BufferAttribute(idx.flatMap((i) => P[i]), 3));
       g.computeVertexNormals();
       return g;
     };
-    const WALLS = [0xf0d9a8, 0xe9a97f, 0xf6e9cf, 0xdc8f72, 0xf2c766, 0xd8dcbc, 0xf3d0c0, 0xe7c08e];
-    const SHUT = [0x3f6b43, 0x2f5a3c, 0x6b4a2e, 0x51677a];
-    const AWN = [0xb8322a, 0x2f7a4a, 0x2a5a9a, 0xd8792a];
-    const ROOF = [0xb0532e, 0xa4482c, 0xbd6a3e, 0x9c4a30];
+    const gable = (w, l, h, rh, ov = 0.35) => { // Satteldach, First entlang z
+      const hx = w / 2 + ov, hz = l / 2 + ov;
+      return tri([[-hx, h, -hz], [hx, h, -hz], [0, h + rh, -hz], [-hx, h, hz], [hx, h, hz], [0, h + rh, hz]],
+        [0, 2, 1, 3, 4, 5, 0, 3, 5, 0, 5, 2, 1, 2, 5, 1, 5, 4, 0, 1, 4, 0, 4, 3]);
+    };
+    const hip = (w, l, h, rh, ov = 0.35) => { // Walmdach (typisch am Gardasee), First entlang der längeren Seite z
+      const hx = w / 2 + ov, hz = l / 2 + ov, r = Math.max(0, hz - hx);
+      return tri([[-hx, h, -hz], [hx, h, -hz], [hx, h, hz], [-hx, h, hz], [0, h + rh, -r], [0, h + rh, r]],
+        [0, 4, 1, 1, 4, 5, 1, 5, 2, 2, 5, 3, 3, 5, 4, 3, 4, 0, 0, 1, 2, 0, 2, 3]);
+    };
+    const pyramid = (w, h, y) => new THREE.ConeGeometry(w * 0.72, h, 4).rotateY(Math.PI / 4).translate(0, y + h / 2, 0);
+    const WALLS = [0xf0d9a8, 0xe9b98f, 0xf6e9cf, 0xe3a283, 0xf2cf72, 0xe8dcc0, 0xf3d0c0, 0xe7c08e, 0xd9c7a0];
+    const SHUT = [0x3f6b43, 0x2f5a3c, 0x5c3f2a, 0x51677a, 0x3d5a46];
+    const AWN = [0xb8322a, 0x2f7a4a, 0x2a5a9a, 0xd8792a, 0xe8e2d0];
+    const ROOF = [0xb0532e, 0xa4482c, 0xbd6a3e, 0x9c4a30, 0xb86040];
     const pick = (a) => a[Math.floor(gr() * a.length)];
-    const house = (s, sg, front, w, l, floors, base, shop) => {
+    const shade = (c, k) => cTmp.set(c).multiplyScalar(k).getHex();
+    const stoneC = () => shade(0xcbb48c, 0.88 + gr() * 0.2);
+
+    // Wohnhaus: Sockel, Gesims, Walm- oder Satteldach, Schornstein, Fenster mit Laibung und Läden, Balkone, Laden mit Markise
+    const house = (s, sg, front, w, l, floors, base, shop, o = {}) => {
       const latC = sg * (front + w / 2);
       const Mx = frameAt(s, latC, base);
       const H = floors * 3 + 0.4;
-      const wc = pick(WALLS), sc = pick(SHUT);
+      const wc = o.wall ?? pick(WALLS), sc = pick(SHUT);
       box('wall', Mx, w, H + 5, l, 0, (H - 5) / 2, 0, wc);
-      box('stone', Mx, w + 0.12, 0.22, l + 0.12, 0, H, 0, cTmp.set(wc).multiplyScalar(1.08).getHex()); // Gesims
-      put('roof', gable(w, l, H + 0.1, w * 0.2), Mx, pick(ROOF));
+      box('stone', Mx, w + 0.08, 0.7, l + 0.08, 0, 0.35, 0, shade(wc, 0.72)); // Sockel
+      box('stone', Mx, w + 0.16, 0.22, l + 0.16, 0, H, 0, shade(wc, 1.08)); // Gesims
+      put('roof', (gr() < 0.6 ? hip : gable)(w, l, H + 0.1, w * 0.22), Mx, pick(ROOF));
+      if (hi) { // Schornstein
+        const cx = (gr() - 0.5) * w * 0.4, cz = (gr() - 0.5) * l * 0.6;
+        box('wall', Mx, 0.55, 1.6, 0.55, cx, H + w * 0.16 + 0.4, cz, shade(wc, 0.92));
+        box('roof', Mx, 0.8, 0.12, 0.8, cx, H + w * 0.16 + 1.25, cz, 0x8a3e26);
+      }
       const fx = -sg * (w / 2 + 0.04); // Fassade zur Straße
-      const n = Math.max(1, Math.floor((l - 1) / 2.5));
+      const n = Math.max(1, Math.floor((l - 1) / 2.6));
+      const balc = hi && floors > 2 && gr() < 0.5 ? 1 + Math.floor(gr() * (floors - 1)) : -1;
       for (let f = 0; f < floors; f++) {
         for (let i = 0; i < n; i++) {
           const z = -l / 2 + (l / n) * (i + 0.5);
           if (f === 0) {
             if (shop && i === 0) continue;
-            if (i === n - 1 || n === 1) { box('wood', Mx, 0.1, 2.25, 1.1, fx, 1.12, z, 0x5a3a24); continue; } // Tür
+            if (i === n - 1 || n === 1) { box('wood', Mx, 0.1, 2.3, 1.15, fx, 1.15, z, 0x5a3a24); box('white', Mx, 0.06, 2.6, 1.5, fx + sg * 0.03, 1.3, z, 0xe8e2d6); continue; } // Tür mit Steinrahmen
           }
-          box('win', Mx, 0.08, 1.35, 0.82, fx, f * 3 + 1.55, z, 0x23262c);
-          if (hi) for (const dz of [-0.66, 0.66]) box('shut', Mx, 0.07, 1.42, 0.46, fx - sg * 0.03, f * 3 + 1.55, z + dz, sc);
+          const tall = f === balc;
+          const wy = f * 3 + (tall ? 1.25 : 1.6), wh = tall ? 2.1 : 1.35;
+          box('win', Mx, 0.08, wh, 0.82, fx, wy, z, 0x23262c);
+          if (hi) {
+            box('white', Mx, 0.05, wh + 0.24, 1.06, fx + sg * 0.03, wy, z, 0xeee8dc); // Fensterlaibung
+            for (const dz of [-0.66, 0.66]) box('shut', Mx, 0.07, wh + 0.06, 0.46, fx - sg * 0.03, wy, z + dz, sc);
+            if (tall) { // Balkon: Platte + Geländer
+              box('stone', Mx, 0.8, 0.14, 1.9, fx - sg * 0.4, f * 3 + 0.18, z, 0xd9d2c4);
+              box('iron', Mx, 0.05, 0.05, 1.9, fx - sg * 0.78, f * 3 + 1.15, z, 0x2a2a2c);
+              for (const dz of [-0.9, -0.3, 0.3, 0.9]) box('iron', Mx, 0.03, 0.95, 0.03, fx - sg * 0.78, f * 3 + 0.7, z + dz, 0x2a2a2c);
+            }
+          }
           if (quality === 'high') box('win', Mx, 0.08, 1.2, 0.75, -fx, f * 3 + 1.6, z, 0x2b2e34); // Rückseite
         }
       }
       if (shop) { // Laden mit Markise
         const z = -l / 2 + (l / n) * 0.5;
-        box('win', Mx, 0.08, 2.0, Math.min(2.4, l / n - 0.3), fx, 1.15, z, 0x30363e);
-        box('awn', Mx, 1.5, 0.07, Math.min(2.8, l / n), fx - sg * 0.72, 2.75, z, pick(AWN), sg * 0.28);
+        box('win', Mx, 0.08, 2.1, Math.min(2.4, l / n - 0.3), fx, 1.25, z, 0x30363e);
+        box('awn', Mx, 1.6, 0.07, Math.min(2.8, l / n), fx - sg * 0.76, 2.85, z, pick(AWN), sg * 0.28);
       }
+      return Mx;
     };
-    // Bergseite: geschlossene Häuserzeile entlang der Gardesana
+
+    // ---- Bergseite: Häuserzeile, dazwischen Kirche mit Campanile ----
+    const churchS = at(0.55);
     for (let s = T.s0 + 2; s < T.s1 - 4;) {
       const l = 7 + gr() * 4, w = 8 + gr() * 3, floors = 2 + Math.floor(gr() * 2.4);
       const sc = s + l / 2;
+      if (Math.abs(sc - churchS) < 13 + l / 2) { s = churchS + 13; continue; }
       const front = hw + 5.8;
       house(sc, land, front, w, l, floors, groundAt(sc, land * front) - 0.05, gr() < 0.45);
       s += l + (gr() < 0.25 ? 2.5 + gr() * 3 : 0.2);
     }
-    // Seeseite: Altstadthäuser auf dem Kai
-    for (let s = T.s0 + 1; s < qA - 6;) {
+    {
+      const front = hw + 9, W = 14, Ln = 13;
+      const base = groundAt(churchS, land * front) - 0.05;
+      const Mx = frameAt(churchS, land * (front + W / 2), base);
+      const wc = 0xf2eadb, H = 11;
+      box('wall', Mx, W, H + 5, Ln, 0, (H - 5) / 2, 0, wc);
+      put('roof', gable(Ln, W, H, 4.2, 0.4).rotateY(Math.PI / 2), Mx, 0xa4482c); // First quer zur Straße → Giebel zeigt zur Straße
+      const fx = -land * (W / 2 + 0.05);
+      const gab = tri([[0, H, -Ln / 2], [0, H, Ln / 2], [0, H + 4.2, 0]], [0, 1, 2, 0, 2, 1]); // Giebelfeld
+      gab.translate(fx, 0, 0);
+      put('wall', gab, Mx, wc);
+      box('wood', Mx, 0.12, 4.2, 2.4, fx, 2.1, 0, 0x4a3020); // Portal
+      box('white', Mx, 0.1, 5.0, 3.4, fx + land * 0.04, 2.5, 0, 0xd8d0be);
+      box('win', Mx, 0.1, 1.8, 1.8, fx, 7.6, 0, 0x2a2f3a); // Rosette
+      for (const z of [-4.5, 4.5]) box('white', Mx, 0.3, H, 0.8, fx, H / 2, z, 0xe0d8c6); // Lisenen
+      // Campanile neben der Kirche (Glockenstube mit Schallöffnungen, Pyramidendach)
+      const cz = Ln / 2 + 2.6, cx = -land * (W / 2 - 2.2), CH2 = 27;
+      box('stone', Mx, 4.2, CH2 + 5, 4.2, cx, (CH2 - 5) / 2, cz, 0xd6c6a2);
+      box('white', Mx, 4.6, 0.4, 4.6, cx, CH2 - 6, cz, 0xe6dece);
+      box('white', Mx, 4.6, 0.4, 4.6, cx, CH2, cz, 0xe6dece);
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) box('win', Mx, dx ? 0.1 : 1.6, 3.4, dz ? 0.1 : 1.6, cx + dx * 2.12, CH2 - 3, cz + dz * 2.12, 0x1e1c1a);
+      put('roof', pyramid(4.6, 5.5, CH2 + 0.2), new THREE.Matrix4().makeTranslation(cx, 0, cz).premultiply(Mx), 0xa4482c);
+    }
+
+    // ---- Seeseite: Altstadthäuser auf dem Kai ----
+    for (let s = T.s0 + 1; s < at(0.3) - 4;) {
       const l = 7 + gr() * 3.5, w = 7 + gr() * 2, floors = 2 + Math.floor(gr() * 2.2);
       const sc = s + l / 2;
       house(sc, side, hw + 7.2, w, l, floors, quayTop(sc), gr() < 0.6);
       s += l + 0.2;
     }
-
-    // ---- Scaliger-Burg auf dem Kai: Ringmauer, Ecktürme, Bergfried, Schwalbenschwanz-Zinnen ----
+    // Palazzo della Gardesana: dreigeschossig, Arkaden (Loggia) im Erdgeschoss, Walmdach
     {
-      const sC = T.s0 + tl * 0.83;
-      const Wd = 22, Ln = 26, latC = side * (hw + 11 + Wd / 2);
-      const Mx = frameAt(sC, latC, quayTop(sC) - 0.1);
-      const stoneC = () => cTmp.set(0xcbb48c).multiplyScalar(0.88 + gr() * 0.2).getHex();
-      const merlons = (x0, z0, x1, z1, y, th) => { // Zinnenreihe von (x0,z0) nach (x1,z1)
-        const len = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(len / 1.5);
-        const along = Math.abs(x1 - x0) < 1e-3;
-        for (let i = 0; i < n; i++) {
-          const t = (i + 0.5) / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
-          const c = stoneC();
-          box('stone', Mx, along ? th : 0.85, 1.0, along ? 0.85 : th, x, y + 0.5, z, c);
-          if (hi) for (const d of [-0.3, 0.3]) box('stone', Mx, along ? th : 0.25, 0.42, along ? 0.25 : th, x + (along ? 0 : d), y + 1.2, z + (along ? d : 0), c); // Schwalbenschwanz
+      const s0 = at(0.3), s1 = at(0.38), sc = (s0 + s1) / 2, Ln = s1 - s0 - 1, W = 10, front = hw + 7.6;
+      const Mx = frameAt(sc, side * (front + W / 2), quayTop(sc));
+      const wc = 0xf0d6a2, H = 3 * 3.4 + 0.6;
+      box('wall', Mx, W - 2.4, H + 5, Ln, side * 1.2, (H - 5) / 2, 0, wc); // Kernbau (Arkade davor)
+      box('wall', Mx, W, H - 3.6 + 0.1, Ln, 0, 3.6 + (H - 3.6) / 2, 0, wc); // Obergeschosse über der Loggia
+      box('stone', Mx, W + 0.2, 0.3, Ln + 0.2, 0, H, 0, 0xe8dcc2);
+      box('stone', Mx, W + 0.1, 0.25, Ln + 0.1, 0, 3.6, 0, 0xe8dcc2);
+      put('roof', hip(W, Ln, H + 0.15, 2.4, 0.5), Mx, 0xa9502e);
+      const fx = -side * (W / 2 + 0.04);
+      const nA = Math.max(3, Math.round(Ln / 3.4));
+      for (let i = 0; i <= nA; i++) box('stone', Mx, 0.7, 3.6, 0.7, fx + side * 0.35, 1.8, -Ln / 2 + (Ln / nA) * i, 0xe2d4b6); // Pfeiler
+      for (let i = 0; i < nA; i++) {
+        const z = -Ln / 2 + (Ln / nA) * (i + 0.5);
+        box('stone', Mx, 0.7, 0.7, Ln / nA - 0.7, fx + side * 0.35, 3.25, z, 0xe2d4b6); // Bogen (vereinfacht)
+        for (let f = 1; f < 3; f++) {
+          box('win', Mx, 0.08, 1.7, 0.9, fx, 3.6 + (f - 1) * 3.4 + 1.6, z, 0x23262c);
+          if (hi) {
+            box('white', Mx, 0.05, 2.0, 1.2, fx + side * 0.03, 3.6 + (f - 1) * 3.4 + 1.6, z, 0xf4eee2);
+            for (const dz of [-0.7, 0.7]) box('shut', Mx, 0.07, 1.76, 0.5, fx - side * 0.03, 3.6 + (f - 1) * 3.4 + 1.6, z + dz, 0x3f6b43);
+          }
         }
-      };
-      const wallH = 7.5, th = 1.4;
-      const hx = Wd / 2, hz = Ln / 2;
+      }
+    }
+    // Torre dell'Orologio am Hafeneck: schlanker Turm mit Zinnen und Uhr
+    const clockS = at(0.395), clockLat = side * (hw + 9.6), clockH = 19, clockW = 4.2;
+    {
+      const Mx = frameAt(clockS, clockLat, quayTop(clockS));
+      box('stone', Mx, clockW, clockH + 3, clockW, 0, (clockH - 3) / 2, 0, 0xd2bf98);
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) box('win', Mx, dx ? 0.1 : 1.0, 2.2, dz ? 0.1 : 1.0, dx * (clockW / 2 + 0.03), clockH - 2.2, dz * (clockW / 2 + 0.03), 0x1e1c1a); // Glockenstube
+      const m = 0.8;
+      for (const d of [-1, 0, 1]) for (const [ax, az] of [[1, 0], [0, 1]]) for (const sgn of [-1, 1]) {
+        const x = ax ? sgn * (clockW / 2 - 0.3) : d * 1.4, z = az ? sgn * (clockW / 2 - 0.3) : d * 1.4;
+        box('stone', Mx, ax ? 0.6 : m, 1.0, az ? 0.6 : m, x, clockH + 0.5, z, 0xd2bf98);
+        if (hi) for (const e of [-0.25, 0.25]) box('stone', Mx, ax ? 0.6 : 0.22, 0.4, az ? 0.6 : 0.22, x + (ax ? 0 : e), clockH + 1.2, z + (az ? 0 : e), 0xd2bf98);
+      }
+      // Zifferblätter (eigene Textur, auf allen vier Seiten)
+      const clockTex = canvasTexture(128, 128, (g, w, h) => {
+        g.fillStyle = '#f4efe2'; g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 2, 0, 7); g.fill();
+        g.strokeStyle = '#2a2a2a'; g.lineWidth = 5; g.stroke();
+        g.fillStyle = '#2a2a2a';
+        for (let k = 0; k < 12; k++) { const a = (k / 12) * Math.PI * 2; g.fillRect(w / 2 + Math.sin(a) * 48 - 3, h / 2 - Math.cos(a) * 48 - 3, 6, 6); }
+        g.lineCap = 'round';
+        g.lineWidth = 6; g.beginPath(); g.moveTo(w / 2, h / 2); g.lineTo(w / 2 + 22, h / 2 - 18); g.stroke();
+        g.lineWidth = 4; g.beginPath(); g.moveTo(w / 2, h / 2); g.lineTo(w / 2 - 6, h / 2 - 40); g.stroke();
+      });
+      const cm = new THREE.MeshLambertMaterial({ map: clockTex });
+      for (let k = 0; k < 4; k++) {
+        const face = new THREE.Mesh(new THREE.CircleGeometry(1.15, 20), cm);
+        face.position.set(Math.sin(k * Math.PI / 2) * (clockW / 2 + 0.06), clockH - 6, Math.cos(k * Math.PI / 2) * (clockW / 2 + 0.06));
+        face.rotation.y = k * Math.PI / 2;
+        face.applyMatrix4(Mx);
+        group.add(face);
+      }
+    }
+
+    // ---- Hafen: halbmondförmiges Becken zwischen zwei Molen mit Molenfeuern ----
+    const hS = (qA + qB) / 2, hA = (qB - qA) / 2 - 2, hR = 30, hL0 = hw + 12.5;
+    const harborPt = (t, out = {}) => worldAt(hS - hA * Math.cos(t), side * (hL0 + hR * Math.sin(t)), out);
+    {
+      const pa = {}, pb = {}, gap = 0.24, top = quayTop(hS) + 0.35;
+      const segs = [[0.0, Math.PI / 2 - gap], [Math.PI / 2 + gap, Math.PI]];
+      for (const [t0, t1] of segs) {
+        const n = Math.ceil((t1 - t0) / 0.09);
+        for (let i = 0; i < n; i++) {
+          harborPt(t0 + ((t1 - t0) * i) / n, pa); harborPt(t0 + ((t1 - t0) * (i + 1)) / n, pb);
+          const dx = pb.x - pa.x, dz = pb.z - pa.z, len = Math.hypot(dx, dz);
+          const Mx = M.compose(P0.set((pa.x + pb.x) / 2, 0, (pa.z + pb.z) / 2), Q.setFromAxisAngle(Y, Math.atan2(dx, dz)), ONE).clone();
+          box('stone', Mx, 3.4, top - level + 2.5, len + 0.6, 0, (top + level - 2.5) / 2, 0, stoneC());
+          if (hi && i % 2 === 0) box('iron', Mx, 0.3, 0.45, 0.3, 1.3, top + 0.22, 0, 0x34363a); // Poller
+        }
+        // Molenfeuer an der Hafeneinfahrt (grün links, rot rechts)
+        const tEnd = t0 === 0 ? t1 : t0;
+        harborPt(tEnd, pa);
+        const Mx = M.compose(P0.set(pa.x, top, pa.z), Q.identity(), ONE).clone();
+        put('white', new THREE.CylinderGeometry(0.55, 0.7, 3.2, 10).translate(0, 1.6, 0), Mx, 0xf2f0ea);
+        put(t0 === 0 ? 'shut' : 'awn', new THREE.CylinderGeometry(0.45, 0.45, 0.9, 10).translate(0, 3.6, 0), Mx, t0 === 0 ? 0x2f9a4a : 0xc8282a);
+      }
+    }
+
+    // ---- Scaliger-Burg: Ringmauer mit Schwalbenschwanz-Zinnen, zwei Ecktürme, hoher Hauptturm ----
+    const merlonsFor = (Mx) => (x0, z0, x1, z1, y, th) => {
+      const len = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(len / 1.5);
+      const along = Math.abs(x1 - x0) < 1e-3;
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+        const c = stoneC();
+        box('stone', Mx, along ? th : 0.85, 1.0, along ? 0.85 : th, x, y + 0.5, z, c);
+        if (hi) for (const d of [-0.3, 0.3]) box('stone', Mx, along ? th : 0.25, 0.42, along ? 0.25 : th, x + (along ? 0 : d), y + 1.2, z + (along ? d : 0), c); // Schwalbenschwanz
+      }
+    };
+    const Wd = 24, Ln = 30, hx = Wd / 2, hz = Ln / 2;
+    const castleM = frameAt(castleS, side * (hw + 11 + hx), quayTop(castleS) - 0.1);
+    {
+      const Mx = castleM, merlons = merlonsFor(Mx);
+      const wallH = 8, th = 1.5;
       for (const [x0, z0, x1, z1] of [[-hx, -hz, hx, -hz], [-hx, hz, hx, hz], [-hx, -hz, -hx, hz], [hx, -hz, hx, hz]]) {
         const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, along = x0 === x1;
         box('stone', Mx, along ? th : Wd, wallH + 4, along ? Ln : th, cx, (wallH - 4) / 2, cz, stoneC());
         merlons(x0, z0, x1, z1, wallH, th);
       }
-      box('win', Mx, 0.3, 4.2, 3.2, -side * (hx + 0.55), 2.1, 0, 0x2a2622); // Tor zur Straße
-      const tower = (x, z, w, h) => {
+      box('win', Mx, 0.3, 4.4, 3.4, -side * (hx + 0.6), 2.2, -hz * 0.35, 0x2a2622); // Tor zur Straße
+      box('white', Mx, 0.2, 5.2, 4.2, -side * (hx + 0.7), 2.4, -hz * 0.35, 0xd8ccb2);
+      const tower = (x, z, w, h, open) => {
         box('stone', Mx, w, h + 4, w, x, (h - 4) / 2, z, stoneC());
         merlons(x - w / 2, z - w / 2, x + w / 2, z - w / 2, h, 0.9); merlons(x - w / 2, z + w / 2, x + w / 2, z + w / 2, h, 0.9);
         merlons(x - w / 2, z - w / 2, x - w / 2, z + w / 2, h, 0.9); merlons(x + w / 2, z - w / 2, x + w / 2, z + w / 2, h, 0.9);
         for (let k = 1; k < h / 4; k++) for (const sg of [-1, 1]) box('win', Mx, 0.1, 1.2, 0.35, sg * (w / 2 + 0.05), k * 4, z, 0x2a2622); // Schießscharten
+        if (open) for (const sg of [-1, 1]) box('win', Mx, 0.1, 2.4, 1.4, sg * (w / 2 + 0.05), h - 2, z, 0x1e1c1a); // offene Turmstube
       };
-      tower(-side * hx, -hz, 4.4, 12.5);
-      tower(-side * hx, hz, 4.4, 12.5);
-      tower(side * hx, -hz, 4.4, 11.5);
-      tower(side * (hx - 3.2), hz - 3.2, 6.8, 21); // Bergfried
+      tower(-side * hx, -hz, 5, 13.5);
+      tower(side * hx, -hz, 5, 12.5);
+      tower(side * (hx - 3.8), hz - 3.8, 7.6, 24, true); // Hauptturm (Mastio) zum See hin
+      // Wohnflügel im Hof (heute Museum) mit Satteldach
+      box('wall', Mx, Wd - 3, 7, 7, 0, 3.5, -hz + 4.5, 0xd8c7a2);
+      put('roof', gable(7, Wd - 3, 7, 1.8, 0.2).rotateY(Math.PI / 2).translate(0, 0, -hz + 4.5), Mx, 0x9c4a30);
     }
 
-    // Mole ins Hafenbecken + Poller
-    const pierS = T.s0 + tl * 0.58;
+    // ---- Limonaia an der Südseite der Burg: Steinpfeiler, Rückwand, Holzbalken, Glasfront ----
     {
-      const Mx = frameAt(pierS, side * (hw + 10.5 + 11), 0);
-      box('stone', Mx, 22, quayTop(pierS) - level + 2.5, 3.2, 0, (quayTop(pierS) + level - 2.5) / 2, 0, 0xd2c6ae);
-      for (let i = 0; i < 6; i++) box('wood', Mx, 0.28, 0.5, 0.28, -11 + 2 + i * 3.6, quayTop(pierS) + 0.25, side * 1.3, 0x3a3a3c);
+      const s0 = castleS + hz + 1.5, s1 = limEnd, sc = (s0 + s1) / 2, Lz = s1 - s0;
+      const Mx = frameAt(sc, side * (hw + 11 + hx), quayTop(sc) - 0.1);
+      const H = 8;
+      box('stone', Mx, 1.2, H + 2, Lz, side * (hx - 0.6), (H - 2) / 2, 0, 0xcbb48c); // Rückwand zum See
+      const nx = 4, nz = Math.round(Lz / 4.2);
+      for (let i = 0; i <= nx; i++) for (let k = 0; k <= nz; k++) {
+        const x = -hx + 2 + (i / nx) * (Wd - 4), z = -Lz / 2 + (k / nz) * Lz;
+        const ph = H - i * 0.5; // Terrassen: Richtung See niedriger
+        box('white', Mx, 0.7, ph, 0.7, x * side, ph / 2, z, 0xf1ece0);
+        if (k < nz) box('wood', Mx, 0.18, 0.18, Lz / nz, x * side, ph, z + Lz / nz / 2, 0x6b4a30);
+        if (i < nx) box('wood', Mx, (Wd - 4) / nx, 0.16, 0.16, (x + (Wd - 4) / nx / 2) * side, ph, z, 0x6b4a30);
+      }
+      if (hi) box('white', Mx, 0.05, H - 1, Lz - 0.6, -side * (hx - 2.4), (H - 1) / 2, 0, 0x9fb6c0); // Glasfront zur Straße (Winter)
+      // Zitronenbäumchen
+      for (let k = 0; k < nz; k++) for (let i = 0; i < nx; i++) {
+        const x = (-hx + 2 + ((i + 0.5) / nx) * (Wd - 4)) * side, z = -Lz / 2 + ((k + 0.5) / nz) * Lz;
+        box('shut', Mx, 1.4, 1.4, 1.4, x, 1.6, z, 0x3f7a32);
+        if (hi) box('awn', Mx, 0.3, 0.3, 0.3, x + 0.5, 1.9, z + 0.4, 0xf2d230);
+      }
     }
+
+    // ---- Fähranleger mit Autofähre ----
+    {
+      const fS = Math.min(T.s1 + 2, at(0.985));
+      const Mx = frameAt(fS, side * (hw + 16 + 12), 0);
+      const top = quayTop(fS) + 0.2;
+      box('stone', Mx, 24, top - level + 2.5, 5, 0, (top + level - 2.5) / 2, 0, 0xd8ccb4);
+      // Fähre längsseits am Steg (weißer Rumpf, blaue Linie, Brücke)
+      const F = frameAt(fS + 8.5, side * (hw + 16 + 16), level);
+      box('white', F, 30, 2.6, 9, 0, 1.0, 0, 0xf4f4f2);
+      box('awn', F, 30.2, 0.5, 9.2, 0, 1.6, 0, 0x1f4f9a);
+      box('iron', F, 26, 0.12, 7.6, 0, 2.35, 0, 0x55585e); // Autodeck
+      box('white', F, 8, 3.0, 6.5, side * 6, 3.9, 0, 0xf4f4f2); // Aufbau
+      box('win', F, 8.1, 0.9, 6.6, side * 6, 4.4, 0, 0x22303c);
+      box('white', F, 4, 2.0, 4, side * 7, 6.3, 0, 0xf4f4f2); // Brücke
+      box('win', F, 4.1, 0.7, 4.1, side * 7, 6.6, 0, 0x22303c);
+      box('awn', F, 1.2, 2.2, 1.2, side * 8, 8.3, 0, 0xc8282a); // Schornstein
+    }
+
     const flushHB = () => {
       for (const k of Object.keys(HB)) {
         if (!HB[k].length) continue;
@@ -1403,10 +1582,30 @@ export function buildTrackMesh(track, quality = 'high') {
     };
     flushHB();
 
+    // ---- Café-Schirme und Tische an der Hafenpromenade ----
+    {
+      const umb = mergeGeometries([
+        vcol(new THREE.ConeGeometry(1.5, 0.55, hi ? 10 : 6, 1, true).translate(0, 2.55, 0), (c) => c.setRGB(1, 1, 1)),
+        vcol(new THREE.CylinderGeometry(0.04, 0.04, 2.5, 5).translate(0, 1.25, 0), (c) => c.setRGB(0.5, 0.5, 0.5)),
+        vcol(new THREE.CylinderGeometry(0.45, 0.45, 0.05, hi ? 10 : 6).translate(0, 0.75, 0), (c) => c.setRGB(0.85, 0.85, 0.85)),
+        vcol(new THREE.CylinderGeometry(0.05, 0.05, 0.75, 4).translate(0, 0.37, 0), (c) => c.setRGB(0.3, 0.3, 0.3)),
+      ]);
+      const items = [];
+      const cols = [0xf4efe2, 0xf4efe2, 0x8a2a2a, 0x2f5a3c];
+      for (let s = qA + 4; s < qB - 3; s += 5.5) {
+        const lat = side * (hw + 9.6);
+        worldAt(s, lat, wp);
+        cTmp.set(cols[Math.floor(gr() * cols.length)]);
+        items.push({ s, x: wp.x, z: wp.z, y: quayTop(s), ry: gr() * 6, sx: 1, r: cTmp.r, g: cTmp.g, b: cTmp.b });
+      }
+      scatter(umb, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), items, { shadow: quality === 'high' });
+    }
+
     // ---- Palmen an der Promenade ----
     const palmItems = [];
     for (let s = T.s0 + 4; s < qB; s += 13 + gr() * 6) {
-      const lat = side * (s < qA ? hw + 6.6 : hw + 8.6);
+      if (Math.abs(s - clockS) < 5) continue;
+      const lat = side * (s < qA ? hw + 6.6 : hw + 7.0);
       worldAt(s, lat, wp);
       const sz = 0.85 + gr() * 0.3;
       palmItems.push({ s, x: wp.x, z: wp.z, y: quayTop(s) - 0.1, ry: gr() * 6.28, sx: sz, sy: sz * (0.9 + gr() * 0.2), r: 0.9 + gr() * 0.2, g: 1, b: 0.9 + gr() * 0.15 });
@@ -1483,12 +1682,10 @@ export function buildTrackMesh(track, quality = 'high') {
       })(),
     ]);
     const boats = [];
-    for (let i = 0; i < 9; i++) { // im Hafen
-      const s = qA + 6 + (i / 9) * (qB - qA - 10);
-      if (Math.abs(s - pierS) < 3.5) continue;
-      const lat = side * (hw + 13.5 + gr() * 12);
+    for (let i = 0; i < 12; i++) { // im Hafenbecken, Bug zur Promenade
+      const s = hS + (i / 11 - 0.5) * hA * 1.5, lat = side * (hL0 + 2.8 + gr() * (hR - 9) * Math.sqrt(Math.max(0, 1 - ((s - hS) / hA) ** 2)));
       worldAt(s, lat, wp);
-      boats.push({ x: wp.x, z: wp.z, ry: -wp.theta + side * Math.PI / 2 + (gr() - 0.5) * 0.4, k: 0.55 + gr() * 0.3, sail: false, c: pick([0xffffff, 0x2a5a9a, 0xb8322a, 0x2f7a4a, 0xf2c766]), ph: gr() * 6 });
+      boats.push({ x: wp.x, z: wp.z, ry: -wp.theta + side * Math.PI / 2 + (gr() - 0.5) * 0.3, k: 0.85 + gr() * 0.35, sail: false, c: pick([0xffffff, 0xffffff, 0x2a5a9a, 0xb8322a, 0x2f7a4a, 0xf2c766]), ph: gr() * 6 });
     }
     for (let i = 0, tries = 0; i < (hi ? 14 : 7) && tries < 400; tries++) { // Segelboote draußen
       const s = track.meshFrom + gr() * L, lat = side * (hw + 40 + gr() * 260);
