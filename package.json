@@ -4,6 +4,6 @@
   "type": "module",
   "scripts": {
     "start": "npx serve .",
-    "sim": "node tools/sim.mjs"
+    "sim": "node games/bike-race/tools/sim.mjs"
   }
 }

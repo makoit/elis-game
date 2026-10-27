@@ -1,0 +1,112 @@
+/* Elis Spiele – Hub (App-Store-Ansicht). Gleicher Look wie das Bike Race: dunkles Glas, Orange & Cyan, große Touch-Flächen. */
+:root {
+  --ink: #fff;
+  --ink-2: rgba(255, 255, 255, 0.74);
+  --ink-3: rgba(255, 255, 255, 0.5);
+  --bg: #060910;
+  --glass: rgba(13, 18, 31, 0.62);
+  --stroke: rgba(255, 255, 255, 0.12);
+  --stroke-2: rgba(255, 255, 255, 0.22);
+  --accent: #ffb000;
+  --accent-2: #19d3ff;
+  --accent-ink: #1d1200;
+  --grad-accent: linear-gradient(180deg, #ffd659, #ffb000 52%, #ff7a00);
+  --shadow: 0 12px 34px rgba(0, 0, 0, 0.38);
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --font: "Avenir Next", "Segoe UI", Roboto, system-ui, -apple-system, sans-serif;
+  --font-display: "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-display);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { background: var(--bg); }
+body {
+  margin: 0; min-height: 100vh; color: var(--ink); -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none;
+  padding: calc(16px + var(--safe-t)) calc(20px + var(--safe-r)) calc(28px + var(--safe-b)) calc(20px + var(--safe-l));
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 0%, rgba(25, 211, 255, 0.12), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255, 140, 0, 0.12), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+button { font-family: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 3px; }
+
+/* ---------- Kopf ---------- */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 1200px; margin: 0 auto; }
+.logo { display: flex; align-items: baseline; gap: 12px; line-height: 1; font-weight: 900; font-style: italic; text-transform: uppercase; transform: skewX(-8deg); }
+.logo .l1 { font-size: clamp(18px, 3vw, 28px); letter-spacing: 0.4em; color: var(--accent-2); text-shadow: 0 0 20px rgba(25, 211, 255, 0.65); }
+.logo .l2 {
+  font-size: clamp(36px, 6.5vw, 64px); letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #fff 6%, #ffe08a 42%, #ff8a00 100%); -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.5)) drop-shadow(0 0 22px rgba(255, 140, 0, 0.4));
+}
+.count {
+  padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-2); background: var(--glass); border: 1px solid var(--stroke);
+}
+
+/* ---------- Kategorien ---------- */
+.cats {
+  display: flex; gap: 10px; max-width: 1200px; margin: 8px auto 0; overflow-x: auto; padding: 10px 6px 18px; scrollbar-width: none;
+}
+.cats::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto; min-height: 48px; padding: 0 20px; border-radius: 999px; font-size: 17px; font-weight: 800; letter-spacing: 0.02em;
+  background: var(--glass); border: 1px solid var(--stroke); transition: transform 0.15s var(--ease), background 0.2s;
+}
+.chip:active { transform: scale(0.96); }
+.chip.sel { background: var(--grad-accent); color: var(--accent-ink); border-color: transparent; box-shadow: 0 4px 12px rgba(255, 140, 0, 0.3); }
+
+/* ---------- Regale & Kacheln ---------- */
+main { max-width: 1200px; margin: 0 auto; }
+.shelf { margin-top: 14px; }
+.shelf h2 {
+  margin: 0 0 12px; font-size: clamp(20px, 2.6vw, 26px); font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: 0.05em;
+  display: flex; align-items: center; gap: 10px;
+}
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 18px; }
+
+.tile {
+  display: flex; flex-direction: column; text-decoration: none; color: inherit; border-radius: 24px; overflow: hidden;
+  background: var(--glass); border: 1px solid var(--stroke); box-shadow: var(--shadow);
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s;
+  animation: tile-in 0.4s var(--ease) both;
+}
+@keyframes tile-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+a.tile:hover { transform: translateY(-4px); border-color: var(--stroke-2); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5); }
+a.tile:active { transform: scale(0.97); }
+
+.art {
+  position: relative; aspect-ratio: 16 / 10; display: grid; place-items: center; overflow: hidden;
+  background: linear-gradient(135deg, var(--c1, #2a3350), var(--c2, #141a2b));
+}
+.art img { width: 100%; height: 100%; object-fit: cover; }
+.art-emoji { font-size: clamp(56px, 9vw, 84px); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35)); }
+.badge {
+  position: absolute; top: 12px; left: 12px; padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 900; letter-spacing: 0.12em;
+  text-transform: uppercase; background: var(--grad-accent); color: var(--accent-ink); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.badge.last { background: rgba(10, 14, 25, 0.8); color: var(--accent-2); border: 1px solid rgba(25, 211, 255, 0.5); }
+
+.info { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px 16px; flex: 1; }
+.info .name { font-size: 24px; font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1.1; }
+.info .cat { font-size: 14px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.04em; }
+.info .desc { margin: 6px 0 10px; font-family: var(--font); font-size: 15px; line-height: 1.4; color: var(--ink-2); flex: 1; }
+.play {
+  align-self: flex-start; padding: 10px 22px; border-radius: 999px; font-size: 17px; font-weight: 900; letter-spacing: 0.04em;
+  background: var(--grad-accent); color: var(--accent-ink); box-shadow: 0 6px 18px rgba(255, 140, 0, 0.3);
+}
+
+.tile.soon { box-shadow: none; background: transparent; border: 2px dashed var(--stroke-2); opacity: 0.7; }
+.tile.soon .art { background: rgba(255, 255, 255, 0.03); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile, .chip { animation: none; transition: none; }
+}

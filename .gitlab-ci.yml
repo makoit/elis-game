@@ -1,10 +1,10 @@
-# Veröffentlicht das Spiel (statische Dateien, kein Build) auf GitLab Pages.
+# Veröffentlicht Hub und Spiele (statische Dateien, kein Build) auf GitLab Pages.
 pages:
   stage: deploy
   image: alpine:latest
   script:
     - mkdir public
-    - cp -r index.html sw.js manifest.webmanifest css js vendor icons assets public/
+    - cp -r index.html sw.js manifest.webmanifest hub games vendor icons public/
   artifacts:
     paths:
       - public

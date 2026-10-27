@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Elis Bike Race">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#080b14">
+  <title>Elis Bike Race</title>
+  <link rel="manifest" href="../../manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="../../icons/icon.svg">
+  <link rel="apple-touch-icon" href="../../icons/icon-192.png">
+  <link rel="stylesheet" href="./css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "../../vendor/three.module.js",
+      "three/addons/": "../../vendor/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="fx" aria-hidden="true"></div>
+  <div id="ui">
+    <!-- 0) Spielmodus -->
+    <section id="screen-mode" class="screen menu">
+      <div class="title">
+        <div class="logo"><span class="l1">ELIS</span><span class="l2">BIKE RACE</span></div>
+        <p class="tagline">Wähle deinen Modus</p>
+      </div>
+      <div class="cards big center" id="mode-cards">
+        <button class="card mode sel" data-mode="solo"><div class="emoji">⏱️</div><div class="name">Einzelfahrt</div><div class="desc">Fahr allein gegen die Uhr und sammle Sterne.</div></button>
+        <button class="card mode" data-mode="vs"><div class="emoji">🏁</div><div class="name">Gegen Computer</div><div class="desc">Kämpf mit 3 Gegnern um den ersten Platz.</div></button>
+      </div>
+      <div id="level-row" class="levels hidden">
+        <span class="lbl">Gegner</span>
+        <div id="level-chips" class="chips"></div>
+      </div>
+      <p class="kbd-hint desktop-only">Lenken <kbd>←</kbd><kbd>→</kbd> · Gas <kbd>↑</kbd> · Bremse <kbd>↓</kbd> · Wheelie <kbd>E</kbd> · Pause <kbd>Esc</kbd></p>
+      <div class="actions row">
+        <button id="btn-home" class="btn">◀ Alle Spiele</button>
+        <button id="btn-settings" class="btn">⚙ Einstellungen</button>
+        <button id="btn-to-garage" class="btn primary">Weiter ▶</button>
+      </div>
+    </section>
+
+    <!-- 1) Garage -->
+    <section id="screen-garage" class="screen menu garage-screen">
+      <h1>Garage <span class="step">2 / 3</span></h1>
+      <div class="garage panel">
+        <div class="kind-switch" id="kind-switch" role="tablist" aria-label="Fahrzeug"></div>
+        <div class="bike-head"><div id="bike-title" class="bike-title"></div><div id="bike-sub" class="muted"></div></div>
+        <div id="bike-stats" class="stats"></div>
+        <div class="tabs" id="garage-tabs">
+          <button data-tab="brand" class="tab sel">Marke</button>
+          <button data-tab="type" class="tab">Typ</button>
+          <button data-tab="parts" class="tab">Teile</button>
+          <button data-tab="look" class="tab">Look</button>
+          <button data-tab="colors" class="tab">Farben</button>
+          <button data-tab="rider" class="tab">Fahrer</button>
+        </div>
+        <div id="tab-content" class="tab-content"></div>
+      </div>
+      <div class="actions row bottom-actions">
+        <button id="btn-back-mode" class="btn">◀ Zurück</button>
+        <button id="btn-random" class="btn">🎲 Zufall</button>
+        <button id="btn-to-maps" class="btn primary">Weiter ▶</button>
+      </div>
+    </section>
+
+    <!-- 2) Strecke wählen -->
+    <section id="screen-map" class="screen menu">
+      <h1>Strecke <span class="step">3 / 3</span></h1>
+      <div id="map-cards" class="cards big"></div>
+      <div class="actions row map-actions">
+        <button id="btn-back-garage" class="btn">◀ Zurück</button>
+        <div id="laps-row" class="levels">
+          <span class="lbl">Runden</span>
+          <button id="laps-minus" class="round-btn" aria-label="Weniger Runden">−</button>
+          <b id="laps-val" class="laps-val">3</b>
+          <button id="laps-plus" class="round-btn" aria-label="Mehr Runden">+</button>
+          <span id="laps-info" class="muted"></span>
+        </div>
+        <button id="btn-start" class="btn primary">Los geht's 🏁</button>
+      </div>
+    </section>
+
+    <!-- Einstellungen -->
+    <section id="screen-settings" class="screen overlay">
+      <div class="dialog wide scroll">
+        <h2>Einstellungen</h2>
+        <div class="setting"><span>Grafik</span><div class="chips" id="set-quality"></div></div>
+        <div class="setting touch-only"><span>Lenkung <small>(Touch)</small></span><div class="chips" id="set-steer"></div></div>
+        <div class="setting"><span>Lenk-Empfindlichkeit</span><div class="chips" id="set-sens"></div></div>
+        <label class="setting"><span>Lenkhilfe <small>(Rad bleibt leichter auf der Strecke)</small></span><input type="checkbox" id="chk-assist"></label>
+        <div class="setting"><span>Bremsassistent <small>(bremst vor zu schnellen Kurven)</small></span><div class="chips" id="set-brake"></div></div>
+        <div class="setting"><span>Kamera-Abstand</span><div class="chips" id="set-cam"></div></div>
+        <label class="setting"><span>Auto-Gas <small>(Rad tritt von allein, Touch)</small></span><input type="checkbox" id="chk-autogas"></label>
+        <label class="setting"><span>Musik</span><input type="checkbox" id="chk-music"></label>
+        <label class="setting"><span>Geräusche</span><input type="checkbox" id="chk-sound"></label>
+        <h3 class="set-head">🏍️ Motorrad</h3>
+        <div class="setting"><span>Tempolimit <small>(für alle Motorräder im Rennen)</small></span><div class="chips" id="set-limit"></div></div>
+        <label class="setting"><span>Motorgeräusch</span><input type="checkbox" id="chk-engine"></label>
+        <button id="btn-settings-close" class="btn primary">Fertig</button>
+      </div>
+    </section>
+
+    <!-- Rennen: HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hud-left">
+          <div class="chip hidden" id="hud-place"><small>PLATZ</small><b id="hud-place-text">1/4</b></div>
+          <div class="chip hidden" id="hud-lap"><small>RUNDE</small><b id="hud-lap-text">1/3</b></div>
+        </div>
+        <div class="chip time" id="hud-time">0:00.00</div>
+        <div class="hud-right">
+          <button id="btn-mute" class="icon-btn" aria-label="Ton">🔊</button>
+          <button id="btn-pause" class="icon-btn" aria-label="Pause">⏸</button>
+        </div>
+      </div>
+      <div class="progress"><div class="track"><span id="hud-bike">🚲</span></div></div>
+      <canvas id="minimap" width="150" height="150"></canvas>
+      <div class="speedo"><b id="hud-speed">0</b><small>KM/H</small><div class="speedbar"><i id="hud-speedbar"></i></div></div>
+      <div id="banner"></div>
+      <div id="countdown"></div>
+    </div>
+
+    <!-- Rennen: Touch-Steuerung -->
+    <div id="touch" class="hidden">
+      <div id="steer-zone"><div class="hint"><span>◀</span> hier wischen zum Lenken <span>▶</span></div></div>
+      <div id="stick-base"><div id="stick-knob"></div></div>
+      <div id="steer-bar"><span class="arrow l">◀</span><span class="arrow r">▶</span><i class="notch"></i><div id="steer-bar-knob"></div></div>
+      <div class="tilt-hint"><span>⟲</span> Gerät wie ein Lenkrad kippen <span>⟳</span></div>
+      <div class="pad right">
+        <button id="t-wheelie" data-touch="wheelie" class="tbtn wheelie" aria-label="Wheelie (halten)"><span class="ico">⤴</span>WHEELIE</button>
+        <button data-touch="brake" class="tbtn brake">BREMSE</button>
+        <button data-touch="gas" class="tbtn gas">GAS</button>
+      </div>
+    </div>
+
+    <!-- Pause -->
+    <section id="screen-pause" class="screen overlay">
+      <div class="dialog">
+        <h2>Pause</h2>
+        <button id="btn-resume" class="btn primary">Weiter</button>
+        <button id="btn-restart" class="btn">Neustart</button>
+        <button id="btn-quit" class="btn">Zum Menü</button>
+        <button id="btn-quit-home" class="btn">Alle Spiele</button>
+      </div>
+    </section>
+
+    <!-- Ergebnis -->
+    <section id="screen-result" class="screen overlay">
+      <div class="dialog wide scroll">
+        <h2 id="result-title">Im Ziel!</h2>
+        <div id="result-stars" class="stars"></div>
+        <div id="result-time" class="big-time"></div>
+        <div id="result-best" class="muted"></div>
+        <div id="result-laps" class="laps-list"></div>
+        <ol id="result-ranking" class="ranking"></ol>
+        <div class="btn-row">
+          <button id="btn-again" class="btn primary">Nochmal</button>
+          <button id="btn-other-map" class="btn">Andere Strecke</button>
+          <button id="btn-other-bike" class="btn">Garage</button>
+          <button id="btn-result-home" class="btn">Alle Spiele</button>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script type="module" src="./js/main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load', () => navigator.serviceWorker.register('../../sw.js', { scope: '../../' }).catch(() => {}));
+    }
+  </script>
+</body>
+</html>

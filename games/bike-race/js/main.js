@@ -466,6 +466,11 @@ $('btn-again').onclick = startRace;
 $('btn-other-map').onclick = () => leaveRace('map');
 $('btn-other-bike').onclick = () => leaveRace('garage');
 $('btn-mute').onclick = () => setMuted(!sfx.muted);
+// Zurück in den Spiele-Hub (Startseite mit allen Spielen)
+const toHub = () => { location.href = '../../'; };
+$('btn-home').onclick = toHub;
+$('btn-quit-home').onclick = toHub;
+$('btn-result-home').onclick = toHub;
 
 initInput({
   onPause: () => { if (race) setPaused(!paused); },

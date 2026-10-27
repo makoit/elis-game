@@ -1,7 +1,7 @@
 {
-  "name": "Elis Bike Race",
-  "short_name": "Bike Race",
-  "description": "Fahrrad-Rennspiel mit Mountainbikes und Rennrädern",
+  "name": "Elis Spiele",
+  "short_name": "Elis Spiele",
+  "description": "Elis Spielesammlung – Bike Race und bald mehr",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
