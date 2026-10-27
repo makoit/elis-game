@@ -63,7 +63,7 @@ export const sfx = {
   get ctx() { return ctx; },
   get musicBus() { return musicBus; },
   get muted() { return muted; },
-  setMuted(v) { muted = v; if (master) master.gain.value = v ? 0 : 1; if (v) { sfx.windOff(); sfx.crowd(0); } },
+  setMuted(v) { muted = v; if (master) master.gain.value = v ? 0 : 1; if (v) { sfx.windOff(); sfx.crowd(0); sfx.engineOff(); } },
   beep() { tone(440, 0.18); },
   go() { tone(880, 0.45); },
   pad() { tone(500, 0.25, 'sine', 0.18, 700); },
@@ -132,3 +132,45 @@ sfx.crowd = function (level) {
   crowd.band.frequency.setTargetAtTime(900 + v * 700, t, 0.2);
   crowd.voice.frequency.setTargetAtTime(300 + v * 160 + Math.sin(t * 1.3) * 30, t, 0.3);
 };
+
+// Motorklang (Motorrad): zwei verstimmte Oszillatoren durch einen Tiefpass, Zündtakt per Amplitudenmodulation.
+// rpm 0..1 (Drehzahl im Gang), load 0..1 (Gas), kind = Zylinderzahl-Charakter, loud = Racing-Auspuff
+const ENGINES = {
+  single: { lo: 34, hi: 135, pulse: 0.5, cut: 700, wave: 'sawtooth', vol: 1.0 },
+  twin: { lo: 40, hi: 150, pulse: 1, cut: 800, wave: 'sawtooth', vol: 0.95 },
+  triple: { lo: 52, hi: 215, pulse: 1.5, cut: 1100, wave: 'sawtooth', vol: 0.9 },
+  four: { lo: 62, hi: 290, pulse: 2, cut: 1500, wave: 'square', vol: 0.75 },
+};
+let engine = null;
+sfx.engineOn = true;
+sfx.engine = function (rpm, load, kind = 'four', loud = false) {
+  if (!ctx) return;
+  const P = ENGINES[kind] || ENGINES.four;
+  if (!engine || engine.kind !== kind) {
+    if (engine) { const old = engine; old.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05); setTimeout(() => old.nodes.forEach((n) => { try { n.stop(); } catch { /* schon gestoppt */ } }), 300); }
+    const o1 = ctx.createOscillator(); o1.type = P.wave;
+    const o2 = ctx.createOscillator(); o2.type = 'sawtooth'; o2.detune.value = -12;
+    const sub = ctx.createOscillator(); sub.type = 'sine';
+    const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.Q.value = 3;
+    const amp = ctx.createGain(); amp.gain.value = 0.6;
+    const lfo = ctx.createOscillator(); lfo.type = 'square';
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.35;
+    lfo.connect(lfoGain).connect(amp.gain);
+    const gain = ctx.createGain(); gain.gain.value = 0;
+    const subGain = ctx.createGain(); subGain.gain.value = 0.5;
+    o1.connect(filter); o2.connect(filter); sub.connect(subGain).connect(filter);
+    filter.connect(amp).connect(gain).connect(master);
+    [o1, o2, sub, lfo].forEach((n) => n.start());
+    engine = { kind, o1, o2, sub, lfo, filter, gain, nodes: [o1, o2, sub, lfo] };
+  }
+  const t = ctx.currentTime;
+  const f = P.lo + (P.hi - P.lo) * rpm;
+  engine.o1.frequency.setTargetAtTime(f, t, 0.03);
+  engine.o2.frequency.setTargetAtTime(f * 1.005, t, 0.03);
+  engine.sub.frequency.setTargetAtTime(f * 0.5, t, 0.03);
+  engine.lfo.frequency.setTargetAtTime(f * P.pulse * 0.5, t, 0.03);
+  engine.filter.frequency.setTargetAtTime(P.cut * (0.5 + 0.7 * load + 0.6 * rpm) * (loud ? 1.4 : 1), t, 0.05);
+  const v = muted || !sfx.engineOn ? 0 : (0.05 + 0.07 * load + 0.04 * rpm) * P.vol * (loud ? 1.45 : 1);
+  engine.gain.gain.setTargetAtTime(v, t, 0.06);
+};
+sfx.engineOff = function () { if (engine && ctx) engine.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.08); };

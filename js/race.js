@@ -7,7 +7,7 @@ import { createSky, createEnvMap, createMountains, createClouds, createStars } f
 import { createCrowd } from './crowd.js';
 import { music } from './music.js';
 import { starTimes } from './autopilot.js';
-import { AIDriver, PERFECT } from './ai.js';
+import { AIDriver, PERFECT, needsBrake } from './ai.js';
 import { resolveBike, randomConfig } from './bikedata.js';
 import { sfx } from './sfx.js';
 import { PostFX } from './postfx.js';
@@ -15,6 +15,7 @@ import { Particles, SkidMarks } from './particles.js';
 
 const BIKE_SCALE = 1.3;
 const STEP = 1 / 60;
+const GEARS = [0.27, 0.43, 0.57, 0.7, 0.84, 1.0]; // Motorrad: Gang-Endgeschwindigkeit als Anteil vom Spitzentempo
 const AI_NAMES = ['Luca', 'Mia', 'Ben', 'Emma', 'Noah', 'Lina', 'Finn', 'Ella', 'Jonas', 'Nele'];
 const envCache = new Map();
 
@@ -25,9 +26,15 @@ export function formatTime(t) {
 }
 
 export class Race {
-  // opts: renderer, bikeDef, map, input, hud, quality, mode ('solo' | 'vs'), level (AI), onFinish
+  // opts: renderer, bikeDef, map, input, hud, quality, mode ('solo' | 'vs'), level (AI), onFinish,
+  //       brakeAssist (bremst vor zu schnellen Kurven), speedLimit (m/s, nur Motorräder), camDist (Faktor)
   constructor(o) {
     Object.assign(this, { renderer: o.renderer, map: o.map, input: o.input, hud: o.hud, onFinish: o.onFinish, quality: o.quality, mode: o.mode });
+    this.brakeAssist = !!o.brakeAssist;
+    this.camDist = o.camDist || 1;
+    this.moto = !!o.bikeDef.moto;
+    this.rpm = 0.1;
+    this.assistHold = 0;
     const map = o.map;
     const c = map.colors;
     const light = { sun: 0xfff0dd, sunI: 2.0, hemi: 0.9, env: 0.9, dir: [0.5, 0.75, 0.45], ...(map.light || {}) };
@@ -82,6 +89,7 @@ export class Race {
     const addRider = (def, isPlayer, lane, name, driver) => {
       const sim = new BikeSim(this.track, def);
       sim.lat = lane;
+      if (def.moto && o.speedLimit) sim.vLimit = o.speedLimit; // gilt für alle Motorräder im Rennen (fair)
       if (isPlayer) sim.assist = o.input.assist ? 1 : 0;
       const model = createBike(def, { lod: isPlayer ? undefined : 'low', shadows: this.shadows });
       model.group.scale.setScalar(BIKE_SCALE);
@@ -102,7 +110,7 @@ export class Race {
     const names = [...AI_NAMES].sort(() => rng() - 0.5);
     for (let i = 0; i < aiCount; i++) {
       const lane = lanes[[0, 1, 3][i]];
-      const def = resolveBike({ ...randomConfig(rng), ...{} });
+      const def = resolveBike(randomConfig(rng, o.bikeDef.kind)); // Gegner fahren dieselbe Fahrzeugart
       addRider(def, false, lane, names[i], new AIDriver(o.level, rng, this.track, lane * 0.6));
     }
     this.finishOrder = [];
@@ -132,6 +140,7 @@ export class Race {
     this.clock = 0; // läuft nach dem Start immer weiter (für Zielzeiten der Gegner)
     this.finishTimer = 0;
     this.hud.bar.style.left = '0%';
+    this.hud.bar.textContent = this.moto ? '🏍️' : '🚲';
     this.hud.place.classList.toggle('hidden', this.mode !== 'vs');
     this.hud.lap.classList.toggle('hidden', this.laps < 2);
     this.hud.lapText.textContent = `1/${this.laps}`;
@@ -260,6 +269,12 @@ export class Race {
     } else if (this.phase === 'race') {
       input.tick(dt);
       ctrl = { gas: input.gas, brake: input.brake, steer: input.steer, wheelie: input.wheelie };
+      // Bremsassistent: bremst kurz an, wenn die nächste Kurve zu schnell angefahren wird
+      if (this.brakeAssist && !this.player.driver) {
+        this.assistHold = needsBrake(this.player.sim, this.track, 0.97) ? 0.15 : Math.max(0, this.assistHold - dt);
+        if (this.assistHold > 0) { ctrl.brake = true; ctrl.gas = false; }
+      }
+      this.ctrl = ctrl;
       this.time += dt;
     } else {
       this.finishTimer += dt;
@@ -300,6 +315,7 @@ export class Race {
       }
     }
     this.updateDebris(dt);
+    if (this.world.update) this.world.update(dt);
 
     this.syncVisuals(dt, false);
     this.updateHud(dt);
@@ -522,7 +538,7 @@ export class Race {
 
     // Kamera
     const feelV = sim.v / SPEED_SCALE; // Tempo-Gefühl auf der alten (arcade) Skala, für Kamera/FOV/Speedlines
-    const dist = 5.0 + feelV * 0.05 + (this.aspectFov() - 1) * 2.5;
+    const dist = (5.0 + Math.min(feelV, 56) * 0.05) * this.camDist + (this.aspectFov() - 1) * 2.5;
     const camS = sim.s - dist;
     const cp = track.pointAt(camS);
     const crx = Math.cos(cp.theta), crz = Math.sin(cp.theta);
@@ -531,10 +547,11 @@ export class Race {
       Math.max(sim.y + 2.2, track.heightAt(camS) + 1.7),
       cp.z + crz * sim.lat * 0.75,
     );
-    const lp = track.pointAt(sim.s + 8);
+    const lp = track.pointAt(sim.s + 8 + Math.max(0, sim.v - 20) * 0.15); // bei Motorrad-Tempo weiter vorausschauen
     const look = new THREE.Vector3(lp.x + Math.cos(lp.theta) * sim.lat * 0.9, sim.y + 1.2, lp.z + Math.sin(lp.theta) * sim.lat * 0.9);
-    this.camPos.lerp(desired, snap ? 1 : 1 - Math.exp(-dt * 9));
-    this.camLook.lerp(look, snap ? 1 : 1 - Math.exp(-dt * 11));
+    const follow = 9 + Math.max(0, sim.v - 15) * 0.25; // schneller nachziehen, sonst hängt die Kamera bei Motorrad-Tempo weit zurück
+    this.camPos.lerp(desired, snap ? 1 : 1 - Math.exp(-dt * follow));
+    this.camLook.lerp(look, snap ? 1 : 1 - Math.exp(-dt * (follow + 2)));
     camera.position.copy(this.camPos);
     if (this.shake > 0) {
       camera.position.x += (Math.random() - 0.5) * this.shake;
@@ -634,7 +651,7 @@ export class Race {
     const pct = `${Math.min(100, (sim.s / this.track.length) * 100).toFixed(1)}%`;
     hud.bar.style.left = pct;
     hud.bar.parentElement.style.setProperty('--p', pct);
-    hud.speedbar.style.width = `${Math.min(100, (sim.v / 20) * 100).toFixed(0)}%`;
+    hud.speedbar.style.width = `${Math.min(100, (sim.v / Math.max(20, sim.vTop)) * 100).toFixed(0)}%`;
     if (this.mode === 'vs') {
       const pl = `${this.rankOf(this.player)}/${this.riders.length}`;
       if (hud.placeText.textContent !== pl) hud.placeText.textContent = pl;
@@ -646,7 +663,21 @@ export class Race {
     const cheer = this.crowd.update(dt, sim.s, fv);
     sfx.crowd(cheer * 0.9 + this.crowd.excite * 0.5);
     music.setIntensity(Math.min(1, fv / 30));
+    if (this.moto) this.updateEngine(dt, sim);
     document.body.style.setProperty('--speed', Math.min(1, Math.max(0, (fv - 14) / 22)).toFixed(2));
+  }
+
+  // Motorklang: Gang aus dem Tempo, Drehzahl steigt im Gang und fällt beim Hochschalten
+  updateEngine(dt, sim) {
+    const top = Math.min(sim.vTop, sim.vLimit);
+    let g = 0;
+    while (g < GEARS.length - 1 && sim.v > GEARS[g] * top * 0.97) g++;
+    const lo = g ? GEARS[g - 1] * top * 0.6 : 0;
+    const target = sim.v < 0.5 ? 0.1 : 0.2 + 0.8 * Math.min(1, (sim.v - lo) / (GEARS[g] * top - lo));
+    const gas = this.phase === 'race' && this.ctrl && this.ctrl.gas;
+    const want = sim.air && gas ? Math.min(1, target + 0.3) : target; // in der Luft dreht das Hinterrad hoch
+    this.rpm += (want - this.rpm) * Math.min(1, dt * (want < this.rpm ? 10 : 6));
+    sfx.engine(this.rpm, gas ? 1 : 0.15, this.player.def.sound, this.player.def.look.pipe === 'race');
   }
 
   starsFor(time) {
@@ -657,6 +688,7 @@ export class Race {
 
   dispose() {
     sfx.windOff();
+    sfx.engineOff();
     sfx.crowd(0);
     document.body.style.setProperty('--speed', '0');
     this.camera.remove(this.lineMesh);

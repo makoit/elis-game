@@ -83,6 +83,7 @@ const SCENERY = {
   canyon: [{ p: 'mesa', r: 440, sc: 1.6, haze: 0.55 }, { p: 'mesa', r: 395, sc: 1.2, haze: 0.35 }, { p: 'mesa', r: 345, sc: 0.8, haze: 0.18 }],
   bikepark: [{ p: 'alps', r: 440, sc: 1.2, haze: 0.55 }, { p: 'hills', r: 395, sc: 1.5, haze: 0.35, trees: 2.0 }, { p: 'hills', r: 345, sc: 1.0, haze: 0.2, trees: 2.4 }],
   pumptrack: [{ p: 'hills', r: 430, sc: 1.6, haze: 0.45 }, { p: 'hills', r: 370, sc: 1.0, haze: 0.25, trees: 2.0 }],
+  gardasee: [{ p: 'alps', r: 440, sc: 1.8, snow: 0.82, haze: 0.6 }, { p: 'hills', r: 398, sc: 2.1, haze: 0.42, trees: 1.4 }, { p: 'hills', r: 352, sc: 1.15, haze: 0.26, trees: 1.6, cypress: true }],
   weinberg: [{ p: 'alps', r: 440, sc: 1.0, haze: 0.66 }, { p: 'hills', r: 400, sc: 1.5, haze: 0.42, rows: true }, { p: 'hills', r: 350, sc: 1.05, haze: 0.24, rows: true, cypress: true }],
 };
 

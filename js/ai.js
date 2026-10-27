@@ -20,6 +20,25 @@ export function steerToward(sim, targetLat) {
   return clamp(wanted / (maxLatV || 1), -1, 1);
 }
 
+// Muss jetzt gebremst werden, damit eine kommende Kurve noch zu schaffen ist?
+// Prüft kurz voraus (wie bisher) und zusätzlich über den ganzen Bremsweg – bei Motorrad-Tempo
+// liegt die Kurve, für die man bremsen muss, oft 100 m und mehr voraus.
+export function needsBrake(sim, track, margin = 1) {
+  if (sim.air || sim.v <= 6) return false;
+  const grip = cornerGrip(sim) * margin;
+  for (const ahead of [0.4, 0.9, 1.5]) if (Math.abs(track.curvAt(sim.s + sim.v * ahead)) * sim.v * sim.v > grip * 1.05) return true;
+  const dec = sim.brakeA * 0.85;
+  const reach = (sim.v * sim.v) / (2 * dec) + 8;
+  const v2 = sim.v * sim.v;
+  for (let d = 6; d < reach; d += 4) {
+    const k = Math.abs(track.curvAt(sim.s + d));
+    if (k < 1e-4) continue;
+    const vOk2 = grip / k; // höchstes Tempo² in der Kurve
+    if (v2 > vOk2 && (v2 - vOk2) / (2 * d) > dec * 0.8) return true;
+  }
+  return false;
+}
+
 export class AIDriver {
   constructor(level, rng, track, lane = 0) {
     this.level = level;
@@ -72,9 +91,7 @@ export class AIDriver {
     steer = clamp(steer, -1, 1);
 
     // vor engen Kurven bremsen, wenn die Fliehkraft nicht mehr auszugleichen ist
-    let need = 0;
-    for (const ahead of [0.4, 0.9, 1.5]) need = Math.max(need, Math.abs(track.curvAt(sim.s + sim.v * ahead)) * sim.v * sim.v);
-    const brake = need > cornerGrip(sim) * 1.05 && sim.v > 6 && !sim.air;
+    const brake = needsBrake(sim, track);
 
     // Gummiband für leichte Stufen
     sim.speedFactor = level.speed;

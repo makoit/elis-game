@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
-  BRANDS, CATEGORIES, PARTS, PALETTE, DEFAULT_CONFIG, resolveBike, statBars, randomConfig,
-  SKIN_TONES, HAIR_COLORS, HAIR_STYLES, KITS, HELMETS, FINISHES, PATTERNS, TIRE_WALLS,
+  BRANDS, CATEGORIES, KINDS, PALETTE, DEFAULT_CONFIG, resolveBike, statBars, randomConfig, brandsOf, catsOf, partsFor, ALL_PART_KEYS,
+  SKIN_TONES, HAIR_COLORS, HAIR_STYLES, KITS, HELMETS, MOTO_HELMETS, FINISHES, PATTERNS, TIRE_WALLS,
 } from './bikedata.js';
 import { LEVELS } from './ai.js';
 import { MAPS } from './maps.js';
@@ -34,8 +34,14 @@ const state = {
   quality: store.get('quality', 'auto'), // auto | high | mid | low
   steer: store.get('steer', 'bar'), // bar | swipe | tilt
   sens: store.get('sens', 'normal'),
+  brakeAssist: store.get('brakeAssist', 'moto'), // off | moto | all
+  speedLimit: store.get('speedLimit', 'off'), // off | 160 | 100 (km/h, Motorräder)
+  cam: store.get('cam', 'normal'), // near | normal | far
   tab: 'brand',
 };
+const LIMITS = { off: 0, 160: 160 / 3.6, 100: 100 / 3.6 };
+const CAMS = { near: 0.82, normal: 1, far: 1.28 };
+const kindOf = (cfg) => (CATEGORIES[cfg.cat] || CATEGORIES.trail).kind;
 input.autoGas = store.get('autogas', isTouchDevice);
 input.assist = store.get('assist', true);
 input.sens = SENS[state.sens] ?? 1;
@@ -102,6 +108,8 @@ function saveCfg() { store.set('cfg', state.cfg); }
 
 function renderGarage() {
   const def = currentDef();
+  $('kind-switch').innerHTML = Object.values(KINDS).map((k) =>
+    `<button class="kind ${def.kind === k.id ? 'sel' : ''}" data-kind="${k.id}"><span>${k.emoji}</span>${k.name}</button>`).join('');
   $('bike-title').textContent = `${def.emoji} ${def.name}`;
   $('bike-sub').textContent = def.brandDef.tagline;
   const labels = { speed: 'Tempo', accel: 'Antritt', steer: 'Lenkung', brake: 'Bremse', offroad: 'Gelände', stability: 'Stabilität' };
@@ -129,14 +137,15 @@ const group = (label, html) => `<div class="group"><div class="lbl">${label}</di
 function renderTab(def) {
   const el = $('tab-content');
   const cfg = state.cfg;
+  const kind = def.kind;
   if (state.tab === 'brand') {
-    el.innerHTML = `<div class="opt-grid">${Object.values(BRANDS).map((b) =>
-      `<button class="opt ${cfg.brand === b.id ? 'sel' : ''}" data-brand="${b.id}"><div class="t" style="border-left:8px solid ${hexCss(b.frame)};padding-left:8px">${b.name}</div><div class="s">${b.tagline}</div></button>`).join('')}</div>`;
+    el.innerHTML = `<div class="opt-grid">${brandsOf(kind).map((b) =>
+      `<button class="opt ${def.brand === b.id ? 'sel' : ''}" data-brand="${b.id}"><div class="t" style="border-left:8px solid ${hexCss(b.frame)};padding-left:8px">${b.name}</div><div class="s">${b.tagline}</div></button>`).join('')}</div>`;
   } else if (state.tab === 'type') {
-    el.innerHTML = `<div class="opt-grid">${Object.values(CATEGORIES).map((c) =>
+    el.innerHTML = `<div class="opt-grid">${catsOf(kind).map((c) =>
       `<button class="opt ${cfg.cat === c.id ? 'sel' : ''}" data-cat="${c.id}"><div class="t">${c.emoji} ${c.name}</div><div class="s">${c.long}</div></button>`).join('')}</div>`;
   } else if (state.tab === 'parts') {
-    el.innerHTML = Object.entries(PARTS).map(([g, grp]) =>
+    el.innerHTML = Object.entries(partsFor(def.cat)).map(([g, grp]) =>
       group(grp.label, `<div class="chips">${Object.entries(grp.options).map(([id, o]) =>
         `<button class="chip-btn ${def.parts[g] === id ? 'sel' : ''}" data-part="${g}" data-id="${id}">${o.name}<small>${o.desc}</small></button>`).join('')}</div>`)).join('');
   } else if (state.tab === 'look') {
@@ -157,13 +166,13 @@ function renderTab(def) {
       group('Hautton', swatches('skin', { colors: SKIN_TONES, index: true })) +
       group('Frisur', chipsFor('hairStyle', HAIR_STYLES)) +
       group('Haarfarbe', swatches('hair', { colors: HAIR_COLORS, index: true })) +
-      group('Helm', chipsFor('helmetType', HELMETS)) +
+      group('Helm', kind === 'moto' ? chipsFor('helmetType', MOTO_HELMETS, { def: MOTO_HELMETS[cfg.helmetType] ? cfg.helmetType : 'auto' }) : chipsFor('helmetType', HELMETS, { def: HELMETS[cfg.helmetType] ? cfg.helmetType : 'auto' })) +
       group('Helmfarbe', swatches('helmet')) +
-      group('Sonnenbrille', chipsFor('glasses', { true: 'Mit', false: 'Ohne' })) +
-      group('Trikot-Muster', chipsFor('kit', KITS)) +
-      group('Trikot', swatches('jersey')) +
+      (kind === 'moto' ? '' : group('Sonnenbrille', chipsFor('glasses', { true: 'Mit', false: 'Ohne' }))) +
+      group(kind === 'moto' ? 'Jacken-Muster' : 'Trikot-Muster', chipsFor('kit', KITS)) +
+      group(kind === 'moto' ? 'Jacke' : 'Trikot', swatches('jersey')) +
       group('Hose', swatches('shorts')) +
-      group('Schuhe', swatches('shoes'));
+      group(kind === 'moto' ? 'Stiefel' : 'Schuhe', swatches('shoes'));
   }
 }
 
@@ -175,6 +184,26 @@ $('garage-tabs').addEventListener('click', (e) => {
   renderGarage();
   t.scrollIntoView({ block: 'nearest', inline: 'center' });
 });
+// Fahrrad ↔ Motorrad: Marke und Typ der jeweiligen Art merken, Teile und Markenfarben zurücksetzen
+function setKind(kind) {
+  const cfg = state.cfg;
+  const cur = kindOf(cfg);
+  if (kind === cur) return;
+  cfg.memo = { ...(cfg.memo || {}), [cur]: { brand: cfg.brand, cat: cfg.cat } };
+  const m = cfg.memo[kind] || {};
+  cfg.cat = CATEGORIES[m.cat]?.kind === kind ? m.cat : catsOf(kind)[0].id;
+  cfg.brand = BRANDS[m.brand]?.kind === kind ? m.brand : brandsOf(kind)[0].id;
+  cfg.frame = null; cfg.accent = null; cfg.helmetType = 'auto';
+  ALL_PART_KEYS.forEach((g) => { cfg[g] = null; });
+  if (state.tab === 'parts' || state.tab === 'type') state.tab = 'type';
+}
+$('kind-switch').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-kind]');
+  if (!b) return;
+  setKind(b.dataset.kind);
+  saveCfg();
+  renderGarage();
+});
 $('tab-content').addEventListener('click', (e) => {
   const cfg = state.cfg;
   const b = e.target.closest('button');
@@ -182,7 +211,7 @@ $('tab-content').addEventListener('click', (e) => {
   if (b.dataset.brand) { cfg.brand = b.dataset.brand; cfg.frame = null; cfg.accent = null; }
   else if (b.dataset.cat) {
     cfg.cat = b.dataset.cat;
-    Object.keys(PARTS).forEach((g) => { cfg[g] = null; }); // Teile zurück auf Standard des Typs
+    ALL_PART_KEYS.forEach((g) => { cfg[g] = null; }); // Teile zurück auf Standard des Typs
   } else if (b.dataset.part) cfg[b.dataset.part] = b.dataset.id;
   else if (b.dataset.set) {
     const v = b.dataset.id;
@@ -206,7 +235,9 @@ $('btn-random').onclick = () => {
 };
 
 // ---- Strecken ----
-const bestOf = (mapId, laps) => store.get(`best.${mapId}.${laps}`, null);
+// Bestzeiten getrennt nach Fahrzeugart (Motorräder würden sonst jede Fahrrad-Zeit schlagen)
+const bestKey = (mapId, laps) => `best.${mapId}.${laps}${kindOf(state.cfg) === 'moto' ? '.moto' : ''}`;
+const bestOf = (mapId, laps) => store.get(bestKey(mapId, laps), null);
 const lapsOf = (m) => (m.loop ? Math.min(m.laps.max, Math.max(1, state.laps[m.id] ?? m.laps.def)) : 1);
 const previews = new Map();
 
@@ -279,6 +310,10 @@ function renderSettings() {
   $('set-quality').innerHTML = chips([['auto', 'Auto'], ['high', 'Hoch'], ['mid', 'Mittel'], ['low', 'Niedrig']], state.quality, 'q');
   $('set-steer').innerHTML = chips([['bar', 'Lenkleiste'], ['swipe', 'Wischen'], ['tilt', 'Neigen']], state.steer, 'steer');
   $('set-sens').innerHTML = chips([['soft', 'Sanft'], ['normal', 'Normal'], ['direct', 'Direkt']], state.sens, 'sens');
+  $('set-brake').innerHTML = chips([['off', 'Aus'], ['moto', 'Motorrad'], ['all', 'Immer']], state.brakeAssist, 'brake');
+  $('set-limit').innerHTML = chips([['off', 'Ohne'], ['160', '160 km/h'], ['100', '100 km/h']], String(state.speedLimit), 'limit');
+  $('set-cam').innerHTML = chips([['near', 'Nah'], ['normal', 'Normal'], ['far', 'Weit']], state.cam, 'cam');
+  $('chk-engine').checked = sfx.engineOn;
   $('chk-assist').checked = input.assist;
   $('chk-autogas').checked = input.autoGas;
   $('chk-sound').checked = !sfx.muted;
@@ -308,6 +343,19 @@ $('set-sens').addEventListener('click', (e) => {
   input.sens = SENS[state.sens];
   renderSettings();
 });
+const chipSetting = (id, attr, key, after) => $(id).addEventListener('click', (e) => {
+  const b = e.target.closest(`[data-${attr}]`);
+  if (!b) return;
+  state[key] = b.dataset[attr];
+  store.set(key, state[key]);
+  if (after) after();
+  renderSettings();
+});
+chipSetting('set-brake', 'brake', 'brakeAssist');
+chipSetting('set-limit', 'limit', 'speedLimit');
+chipSetting('set-cam', 'cam', 'cam');
+$('chk-engine').onchange = (e) => { sfx.engineOn = e.target.checked; store.set('engine', sfx.engineOn); if (!sfx.engineOn) sfx.engineOff(); };
+sfx.engineOn = store.get('engine', true);
 $('chk-assist').onchange = (e) => { input.assist = e.target.checked; store.set('assist', input.assist); };
 $('chk-autogas').onchange = (e) => { input.autoGas = e.target.checked; store.set('autogas', input.autoGas); document.body.classList.toggle('autogas', input.autoGas); };
 $('chk-sound').onchange = (e) => setMuted(!e.target.checked);
@@ -338,9 +386,12 @@ function startRace() {
   applyQuality();
   const level = LEVELS.find((l) => l.id === state.level) || LEVELS[1];
   const map = MAPS[state.map];
+  const bikeDef = currentDef();
   race = new Race({
-    renderer, bikeDef: currentDef(), map, laps: lapsOf(map), input, hud, quality: effectiveQuality(),
+    renderer, bikeDef, map, laps: lapsOf(map), input, hud, quality: effectiveQuality(),
     mode: state.mode, level, onFinish: finishRace, bot: qs.has('bot'),
+    brakeAssist: state.brakeAssist === 'all' || (state.brakeAssist === 'moto' && bikeDef.moto),
+    speedLimit: LIMITS[state.speedLimit] || 0, camDist: CAMS[state.cam] || 1,
   });
   show();
   inRace(true);
@@ -356,7 +407,7 @@ function finishRace(res) {
   } else {
     stars = race.starsFor(res.time);
     title = '🏁 Im Ziel!';
-    const key = `best.${map.id}.${res.laps}`;
+    const key = bestKey(map.id, res.laps);
     const prev = store.get(key, null);
     const isBest = !prev || res.time < prev.time;
     if (isBest) store.set(key, { time: res.time, stars: Math.max(stars, prev ? prev.stars : 0) });
@@ -372,6 +423,7 @@ function finishRace(res) {
   $('result-ranking').innerHTML = vs ? res.ranking.map((r, i) =>
     `<li class="${r.isPlayer ? 'me' : ''}"><span class="pos">${i + 1}.</span><span class="sw" style="background:${hexCss(r.def.colors.frame)}"></span><span class="who">${r.isPlayer ? 'Du' : r.name} <small>${r.def.name}</small></span><span>${r.time != null ? formatTime(r.time) : '–'}</span></li>`).join('') : '';
   sfx.windOff();
+  sfx.engineOff();
   sfx.crowd(0);
   inRace(false);
   show('screen-result');
@@ -383,6 +435,7 @@ function leaveRace(to) {
   inRace(false);
   resetInput();
   sfx.windOff();
+  sfx.engineOff();
   sfx.crowd(0);
   music.play('menu');
   if (to === 'garage') { renderGarage(); show('screen-garage'); } else { renderMapScreen(); show('screen-map'); }
@@ -392,7 +445,7 @@ function setPaused(v) {
   if (!race || race.phase === 'finished') return;
   paused = v;
   resetInput();
-  if (v) { sfx.windOff(); sfx.crowd(0); }
+  if (v) { sfx.windOff(); sfx.engineOff(); sfx.crowd(0); }
   show(v ? 'screen-pause' : undefined);
 }
 
@@ -433,9 +486,10 @@ addEventListener('resize', onResize);
 addEventListener('orientationchange', () => setTimeout(onResize, 200));
 
 // Schnellstart zum Testen: ?start&mode=vs&cat=road&brand=velocita&map=1&laps=2&level=hard&autogas&warp=20&screen=garage|map&tab=parts
+// (Motorräder: cat=dirt|enduro|naked|superbike)
 if (qs.has('mode')) state.mode = qs.get('mode');
 if (qs.has('level')) state.level = qs.get('level');
-if (qs.has('cat')) { state.cfg.cat = qs.get('cat'); Object.keys(PARTS).forEach((g) => { state.cfg[g] = null; }); }
+if (qs.has('cat') && CATEGORIES[qs.get('cat')]) { setKind(CATEGORIES[qs.get('cat')].kind); state.cfg.cat = qs.get('cat'); ALL_PART_KEYS.forEach((g) => { state.cfg[g] = null; }); }
 if (qs.has('brand')) { state.cfg.brand = qs.get('brand'); state.cfg.frame = null; state.cfg.accent = null; }
 if (qs.has('map')) state.map = Math.min(Number(qs.get('map')), MAPS.length - 1);
 if (qs.has('laps')) state.laps[MAPS[state.map].id] = Number(qs.get('laps'));

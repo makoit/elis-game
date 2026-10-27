@@ -50,6 +50,7 @@
     <section id="screen-garage" class="screen menu garage-screen">
       <h1>Garage <span class="step">2 / 3</span></h1>
       <div class="garage panel">
+        <div class="kind-switch" id="kind-switch" role="tablist" aria-label="Fahrzeug"></div>
         <div class="bike-head"><div id="bike-title" class="bike-title"></div><div id="bike-sub" class="muted"></div></div>
         <div id="bike-stats" class="stats"></div>
         <div class="tabs" id="garage-tabs">
@@ -94,9 +95,14 @@
         <div class="setting touch-only"><span>Lenkung <small>(Touch)</small></span><div class="chips" id="set-steer"></div></div>
         <div class="setting"><span>Lenk-Empfindlichkeit</span><div class="chips" id="set-sens"></div></div>
         <label class="setting"><span>Lenkhilfe <small>(Rad bleibt leichter auf der Strecke)</small></span><input type="checkbox" id="chk-assist"></label>
+        <div class="setting"><span>Bremsassistent <small>(bremst vor zu schnellen Kurven)</small></span><div class="chips" id="set-brake"></div></div>
+        <div class="setting"><span>Kamera-Abstand</span><div class="chips" id="set-cam"></div></div>
         <label class="setting"><span>Auto-Gas <small>(Rad tritt von allein, Touch)</small></span><input type="checkbox" id="chk-autogas"></label>
         <label class="setting"><span>Musik</span><input type="checkbox" id="chk-music"></label>
         <label class="setting"><span>Geräusche</span><input type="checkbox" id="chk-sound"></label>
+        <h3 class="set-head">🏍️ Motorrad</h3>
+        <div class="setting"><span>Tempolimit <small>(für alle Motorräder im Rennen)</small></span><div class="chips" id="set-limit"></div></div>
+        <label class="setting"><span>Motorgeräusch</span><input type="checkbox" id="chk-engine"></label>
         <button id="btn-settings-close" class="btn primary">Fertig</button>
       </div>
     </section>

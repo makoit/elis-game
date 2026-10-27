@@ -4,7 +4,7 @@
 
 export const START = -20; // Strecke beginnt 20 m vor der Startlinie
 export const DS = 0.5; // Abtastabstand
-export const RUNOUT = 80; // Auslauf hinter dem Ziel
+export const RUNOUT = 200; // Auslauf hinter dem Ziel (A→B)
 
 export function mulberry32(a) {
   return function () {
@@ -45,7 +45,7 @@ export function buildTrack(map, laps = 1) {
   const L = map.length;
   laps = loop ? Math.max(1, laps | 0) : 1;
   const length = L * laps;
-  const end = length + RUNOUT;
+  const end = length + (loop ? L : RUNOUT); // Rundkurs: eine Auslaufrunde (schnelle Motorräder brauchen Platz zum Bremsen)
   const gStart = loop ? 0 : START; // Geometrie-Bereich (bei Rundkursen genau eine Runde)
   const gEnd = loop ? L : end;
   const n = loop ? Math.round(L / DS) + 1 : Math.ceil((end - START) / DS) + 1;
@@ -175,10 +175,19 @@ export function buildTrack(map, laps = 1) {
   const bankAt = (s) => Math.max(-bankMax, Math.min(bankMax, curvAt(s) * (map.berm ? 18 : 10)));
 
   const heightAt = (s) => { s = wrap(s); return terrainAt(s) + rampAt(s); };
+  // Seespiegel (Gardasee): etwas unter dem tiefsten Punkt der Uferstraße
+  let lakeLevel = null;
+  if (map.lake) {
+    let lo = Infinity;
+    for (let s = 0; s < L; s += 2) lo = Math.min(lo, terrainAt(s));
+    lakeLevel = lo - (map.lake.depth ?? 1.2);
+  }
   const slopeAt = (s) => (heightAt(s + 0.25) - heightAt(s - 0.25)) / 0.5;
 
-  // Höhe des seitlichen Walls (Böschung) neben der Strecke
+  // Höhe des seitlichen Walls (Böschung) neben der Strecke (an der Seeseite eben)
+  const lakeSide = map.lake ? map.lake.side : 0;
   const bankH = (lat) => {
+    if (lakeSide && Math.sign(lat) === lakeSide) return 0;
     const a = Math.abs(lat) - halfW - 3;
     return a > 0 ? Math.pow(a, 1.3) * 0.25 * (map.wall ?? 1) : 0;
   };
@@ -243,7 +252,7 @@ export function buildTrack(map, laps = 1) {
 
   return {
     map, halfW, loop, laps, lapLength: L, length, end, wrap, step,
-    meshFrom: gStart, meshTo: gEnd, bankMax, inRampZone,
+    meshFrom: gStart, meshTo: gEnd, bankMax, inRampZone, lakeLevel,
     pointAt, heightAt, terrainAt, rampAt, slopeAt, bankH, curvAt, bankAt, rampSpan,
     rocks, pads, patches,
   };

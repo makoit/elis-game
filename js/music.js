@@ -19,6 +19,7 @@ const STYLES = {
   bikepark: { bpm: 124, key: 7, mode: 'minor', lead: 'sawtooth' },
   pumptrack: { bpm: 138, key: 4, mode: 'minor', lead: 'square' },
   weinberg: { bpm: 116, key: 3, mode: 'major', lead: 'sine' }, // warm, gemütlich (Es-Dur)
+  gardasee: { bpm: 122, key: 7, mode: 'major', lead: 'triangle' }, // sonnig, Urlaubsgefühl (G-Dur)
 };
 
 let timer = null;

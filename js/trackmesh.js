@@ -339,6 +339,12 @@ const SPECIES = {
     { w: 0.35, size: [0.7, 1.15], make: saguaro },
     { w: 0.2, size: [0.8, 1.2], make: deadTree },
   ],
+  garda: [ // Olivenbäume, Zypressen, ein paar Palmen und Steineichen
+    { w: 0.42, size: [0.8, 1.2], make: (s, hi) => broadleaf(s, hi, { H: 1.9, R: 2.3, squash: 0.62, trunkR: 0.3, bark: 0x6e665c, leaf: 0x75865a, tip: 0xb4c29a, n: 12 }) },
+    { w: 0.34, size: [0.8, 1.3], make: cypress },
+    { w: 0.12, size: [0.85, 1.2], make: palm, double: true },
+    { w: 0.12, size: [0.8, 1.2], make: (s, hi) => broadleaf(s, hi, { H: 3.2, R: 2.4, squash: 0.8, trunkR: 0.26, bark: 0x4e4438, leaf: 0x3a5a2c, tip: 0x7a9050, n: 10 }) },
+  ],
   vine: [
     { w: 0.5, size: [0.8, 1.25], make: cypress },
     { w: 0.35, size: [0.85, 1.3], make: (s, hi) => broadleaf(s, hi, { H: 2.8, R: 3.0, squash: 0.66, trunkR: 0.3, bark: 0x77706a, leaf: 0x6a8a38, tip: 0xd2b048, n: 13 }) },
@@ -414,6 +420,50 @@ function stoneTexture() {
   }, true);
 }
 
+// Kies/Splitt für Seitenstreifen und Ufer (hell, wird per Vertexfarbe eingefärbt)
+function gravelTexture(size, seed) {
+  return canvasTexture(size, size, (g, w, h) => {
+    const n1 = noiseField(w, 12, seed), n2 = noiseField(w, 48, seed + 1);
+    const img = g.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const u = x / w, v = y / h;
+        const n = 0.78 + (n1(u, v) - 0.5) * 0.25 + (n2(u, v) - 0.5) * 0.35 + (hash(x * 17 + y * 3) - 0.5) * 0.22;
+        const k = (y * w + x) * 4;
+        img.data[k] = img.data[k + 1] = img.data[k + 2] = Math.max(0, Math.min(255, n * 255));
+        img.data[k + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    const rnd = mulberry32(seed + 5);
+    for (let i = 0; i < size * 1.6; i++) { // Kiesel mit Schatten
+      const x = rnd() * w, y = rnd() * h, r = 1 + rnd() * 2.6, l = Math.floor(170 + rnd() * 85);
+      g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(x + 0.8, y + 0.9, r, r * 0.75, 0, 0, 7); g.fill();
+      g.fillStyle = `rgb(${l},${l},${Math.floor(l * 0.96)})`; g.beginPath(); g.ellipse(x, y, r, r * 0.75, rnd() * 3, 0, 7); g.fill();
+    }
+  }, true);
+}
+
+// Wellen-Normalmap für den See (kachelbar)
+function waveNormalTexture(size, seed) {
+  const n1 = noiseField(size, 8, seed), n2 = noiseField(size, 20, seed + 3);
+  const H = (u, v) => n1(u, v) * 0.65 + n2(u, v) * 0.35;
+  return canvasTexture(size, size, (g, w, h) => {
+    const img = g.createImageData(w, h);
+    const e = 1 / w;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const u = x / w, v = y / h;
+        const dx = (H((u + e) % 1, v) - H((u - e + 1) % 1, v)) * 9, dy = (H(u, (v + e) % 1) - H(u, (v - e + 1) % 1)) * 9;
+        const l = Math.hypot(dx, dy, 1);
+        const k = (y * w + x) * 4;
+        img.data[k] = (-dx / l * 0.5 + 0.5) * 255; img.data[k + 1] = (-dy / l * 0.5 + 0.5) * 255; img.data[k + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[k + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+  }, true);
+}
+
 export function buildTrackMesh(track, quality = 'high') {
   const { map, halfW: hw, pointAt, terrainAt, rampAt, bankAt, bankH } = track;
   const col = map.colors;
@@ -460,10 +510,12 @@ export function buildTrackMesh(track, quality = 'high') {
   const MatCls = quality === 'low' ? THREE.MeshLambertMaterial : THREE.MeshStandardMaterial;
   const terrainMat = new MatCls({ vertexColors: true, map: grassTex, ...(quality === 'low' ? {} : { roughness: 0.95, metalness: 0 }) });
   const roadMat = new MatCls({ vertexColors: true, map: roadTex, ...(quality === 'low' ? {} : { roughness: asphalt ? 0.8 : 0.98, metalness: 0 }) });
+  // Seitenstreifen/Bankett und Ufer: eigene Kies-Struktur, damit sie sich deutlich von Belag und Wiese abheben
+  const shoulderMat = new MatCls({ vertexColors: true, map: gravelTexture(quality === 'low' ? 128 : 256, map.seed + 21), ...(quality === 'low' ? {} : { roughness: 1, metalness: 0 }) });
 
   // Foto-Texturen (PBR-Detail) laden, sobald verfügbar; bis dahin bleiben die prozeduralen Texturen
   if (quality !== 'low') {
-    const ground = { round: 'grass', palm: 'sand', pine: 'forest', cactus: 'red', vine: 'vineyard' }[map.decor] || 'grass';
+    const ground = { round: 'grass', palm: 'sand', pine: 'forest', cactus: 'red', vine: 'vineyard', garda: 'grass' }[map.decor] || 'grass';
     loadSurface(ground).then((s) => {
       if (!s) return;
       s.diff.repeat.set(2.5, 2.5);
@@ -480,11 +532,22 @@ export function buildTrackMesh(track, quality = 'high') {
       roadMat.normalScale.set(asphalt ? 0.6 : 1, asphalt ? 0.6 : 1);
       roadMat.needsUpdate = true;
     });
+    loadSurface('dirt').then((s) => {
+      if (!s) return;
+      const nor = s.nor.clone();
+      nor.repeat.set(1.2, 1.2);
+      nor.needsUpdate = true;
+      shoulderMat.normalMap = nor;
+      shoulderMat.normalScale.set(0.8, 0.8);
+      shoulderMat.needsUpdate = true;
+    });
   }
 
   // ---- Gelände-Band, in Abschnitten ----
   const S = map.span || 40; // seitliche Breite des Geländebandes (kleine Rundkurse: schmaler, damit sich nichts überlappt)
-  const cross = S >= 30 ? [
+  const lakeSide = map.lake ? map.lake.side : 0;
+  const level = track.lakeLevel;
+  let cross = S >= 30 ? [
     { lat: -S, t: 'g', drop: -40 }, { lat: -S + 6, t: 'g' }, { lat: -20, t: 'g' }, { lat: -hw - 8, t: 'g' },
     { lat: -hw - 3, t: 'v' }, { lat: -hw - 0.9, t: 'e' }, { lat: -hw, t: 'e' }, { lat: -hw, t: 'r' }, { lat: hw, t: 'r' },
     { lat: hw, t: 'e' }, { lat: hw + 0.9, t: 'e' }, { lat: hw + 3, t: 'v' }, { lat: hw + 8, t: 'g' }, { lat: 20, t: 'g' },
@@ -495,10 +558,28 @@ export function buildTrackMesh(track, quality = 'high') {
     { lat: hw, t: 'e' }, { lat: hw + 0.9, t: 'e' }, { lat: hw + 3, t: 'v' }, { lat: hw + 6, t: 'g' },
     { lat: S - 3, t: 'g' }, { lat: S, t: 'g', drop: -40 },
   ];
+  if (lakeSide) {
+    // Seeseite: ebener Streifen (Zuschauer, Mauer), kurzer Felsabbruch, Kiesufer, dann unter den Seespiegel.
+    // lake = Höhe relativ zum Seespiegel (absolut, unabhängig vom Straßenprofil)
+    const lakeHalf = [
+      { lat: hw + 3, t: 'v' }, { lat: hw + 6.6, t: 'g' }, { lat: hw + 7.4, t: 'c', drop: -0.4 }, { lat: hw + 11, t: 'b', lake: 0.35 },
+      { lat: hw + 15, t: 'b', lake: -1.6 }, { lat: S - 6, t: 'b', lake: -4 }, { lat: S, t: 'b', lake: -4, drop: -40 },
+    ];
+    const keep = cross.filter((c) => Math.sign(c.lat) !== lakeSide || Math.abs(c.lat) <= hw + 0.9 + 1e-6);
+    const add = lakeHalf.map((c) => ({ ...c, lat: c.lat * lakeSide }));
+    cross = lakeSide > 0 ? [...keep, ...add] : [...add.reverse(), ...keep];
+  }
   const m = cross.length;
   const roadJ = cross.findIndex((c) => c.t === 'r');
   // e = ausgefahrener Randstreifen zwischen Piste und Bankett (Mischung aus Belag und Bankett)
-  const base = { g: new THREE.Color(col.grass), v: new THREE.Color(col.verge), e: new THREE.Color(col.verge).lerp(new THREE.Color(col.road), asphalt ? 0.3 : 0.55).multiplyScalar(asphalt ? 0.85 : 0.92) };
+  const base = {
+    g: new THREE.Color(col.grass), v: new THREE.Color(col.verge),
+    e: col.edge != null ? new THREE.Color(col.edge) : new THREE.Color(col.verge).lerp(new THREE.Color(col.road), asphalt ? 0.3 : 0.55).multiplyScalar(asphalt ? 0.85 : 0.92),
+    c: new THREE.Color(col.cliff ?? col.rock), b: new THREE.Color(col.beach ?? col.rock),
+  };
+  const town = map.town && map.decor === 'garda' ? { s0: map.town.s, s1: map.town.s + map.town.len } : null;
+  const paving = new THREE.Color(0xbcb3a3);
+  const shoulderSeg = (a, b) => a === 'c' || a === 'b' || b === 'c' || b === 'b' || ((a === 'e' || a === 'v') && (b === 'e' || b === 'v'));
   const rampCol = new THREE.Color(col.ramp);
   const tmp = new THREE.Color();
   const p = {};
@@ -521,6 +602,7 @@ export function buildTrackMesh(track, quality = 'high') {
     const colr = new Float32Array(nr * m * 3);
     const uvT = new Float32Array(nr * m * 2);
     const uvR = new Float32Array(nr * m * 2);
+    const uvS = new Float32Array(nr * m * 2);
     for (let i = 0; i < nr; i++) {
       const s = rowS[r0 + i];
       pointAt(s, p);
@@ -529,6 +611,7 @@ export function buildTrackMesh(track, quality = 'high') {
       const ramp = rampAt(s);
       const bt = Math.tan(bankAt(s));
       const band = Math.floor(s / 8) % 2 ? 1 : 0.95;
+      const inTown = town && s > town.s0 - 8 && s < town.s1 + 8;
       for (let j = 0; j < m; j++) {
         const c = cross[j];
         const a = Math.abs(c.lat);
@@ -537,9 +620,11 @@ export function buildTrackMesh(track, quality = 'high') {
         const x = p.x + rx * c.lat, z = p.z + rz * c.lat;
         pos[k] = x;
         pos[k + 2] = z;
-        pos[k + 1] = terr + ramp * fade + bankH(c.lat) - c.lat * bt * fade + (c.drop || 0);
+        pos[k + 1] = c.lake != null ? level + c.lake + (c.drop || 0) : terr + ramp * fade + bankH(c.lat) - c.lat * bt * fade + (c.drop || 0);
         uvT[(i * m + j) * 2] = x * 0.12;
         uvT[(i * m + j) * 2 + 1] = z * 0.12;
+        uvS[(i * m + j) * 2] = x * 0.4;
+        uvS[(i * m + j) * 2 + 1] = z * 0.4;
         uvR[(i * m + j) * 2] = (c.lat + hw) / (2 * hw);
         uvR[(i * m + j) * 2 + 1] = s / 16;
         if (c.t === 'r') {
@@ -550,15 +635,16 @@ export function buildTrackMesh(track, quality = 'high') {
           if (c.t === 'v') tmp.multiplyScalar(band * (0.9 + hash(s * 0.37 + j) * 0.2));
           else if (c.t === 'e') tmp.multiplyScalar(0.85 + hash(s * 1.7 + j) * 0.3);
           else tmp.multiplyScalar(0.88 + hash((r0 + i) * 31 + j) * 0.24);
+          if (inTown && (c.t === 'v' || c.t === 'g') && a < hw + 7) tmp.copy(paving).multiplyScalar(0.9 + hash(s * 0.9 + j) * 0.15); // Gehweg im Ort
         }
         colr[k] = tmp.r; colr[k + 1] = tmp.g; colr[k + 2] = tmp.b;
       }
     }
-    const idxT = [], idxR = [];
+    const idxT = [], idxR = [], idxS = [];
     for (let i = 0; i < nr - 1; i++) {
       for (let j = 0; j < m - 1; j++) {
         const a = i * m + j, b = a + 1, c2 = a + m, d = c2 + 1;
-        (j === roadJ ? idxR : idxT).push(a, b, c2, b, d, c2);
+        (j === roadJ ? idxR : shoulderSeg(cross[j].t, cross[j + 1].t) ? idxS : idxT).push(a, b, c2, b, d, c2);
       }
     }
     const make = (idx, uv, mat) => {
@@ -575,6 +661,7 @@ export function buildTrackMesh(track, quality = 'high') {
     };
     make(idxT, uvT, terrainMat);
     make(idxR, uvR, roadMat);
+    make(idxS, uvS, shoulderMat);
     r0 = r1;
   }
 
@@ -598,10 +685,11 @@ export function buildTrackMesh(track, quality = 'high') {
   };
 
   // Geländehöhe an beliebiger Stelle – exakt wie das Gelände-Mesh (lineare Interpolation zwischen den Querschnittspunkten)
-  const yCross = (lat, drop, terr, ramp, bt) => {
-    const a = Math.abs(lat);
+  const yCross = (c, terr, ramp, bt) => {
+    if (c.lake != null) return level + c.lake + (c.drop || 0);
+    const a = Math.abs(c.lat);
     const fade = a <= hw + 1 ? 1 : Math.max(0, 1 - (a - hw - 1) / 3);
-    return terr + ramp * fade + bankH(lat) - lat * bt * fade + (drop || 0);
+    return terr + ramp * fade + bankH(c.lat) - c.lat * bt * fade + (c.drop || 0);
   };
   const groundAt = (s, lat) => {
     const terr = terrainAt(s), ramp = rampAt(s), bt = Math.tan(bankAt(s));
@@ -609,7 +697,7 @@ export function buildTrackMesh(track, quality = 'high') {
     while (j < m - 2 && cross[j + 1].lat < lat) j++;
     const c0 = cross[j], c1 = cross[j + 1];
     const t = c1.lat > c0.lat ? clamp01((lat - c0.lat) / (c1.lat - c0.lat)) : 0;
-    const y0 = yCross(c0.lat, c0.drop, terr, ramp, bt), y1 = yCross(c1.lat, c1.drop, terr, ramp, bt);
+    const y0 = yCross(c0, terr, ramp, bt), y1 = yCross(c1, terr, ramp, bt);
     return y0 + (y1 - y0) * t;
   };
   const worldAt = (s, lat, out) => { pointAt(s, p); out.x = p.x + Math.cos(p.theta) * lat; out.z = p.z + Math.sin(p.theta) * lat; out.theta = p.theta; return out; };
@@ -626,7 +714,11 @@ export function buildTrackMesh(track, quality = 'high') {
     return false;
   };
   const w0 = {};
+  // Seeseite: nur auf dem ebenen Streifen an der Straße; im Ort keine zufällige Deko (dort stehen Häuser)
+  const wet = (lat) => lakeSide && Math.sign(lat) === lakeSide && Math.abs(lat) > hw + 6.2;
+  const townZone = (s, lat) => town && s > town.s0 - 14 && s < town.s1 + 14 && Math.abs(lat) < hw + 42;
   const spotOk = (s, lat, margin = 4) => {
+    if (wet(lat) || townZone(s, lat)) return false;
     if (!track.loop) return true;
     worldAt(s, lat, w0);
     return !nearTrack(w0.x, w0.z, s, margin);
@@ -662,6 +754,7 @@ export function buildTrackMesh(track, quality = 'high') {
   // ---- Weinberg: Rebzeilen, Trockenmauern, Kapelle, Weingut ----
   const vineBlocks = [];
   if (map.decor === 'vine') buildVineyard();
+  const gardaFx = map.decor === 'garda' ? buildGarda() : null;
   const inVineyard = (s, lat) => vineBlocks.some((b) => Math.sign(lat) === b.side && s > b.s0 - 2 && s < b.s1 + 2 && Math.abs(lat) > b.l0 - 2.5 && Math.abs(lat) < b.l1 + 2);
 
   // ---- Bäume (mehrere Arten und Varianten, Größe/Farbe variiert) ----
@@ -715,7 +808,7 @@ export function buildTrackMesh(track, quality = 'high') {
   // ---- Büsche (bzw. Findlinge in der Wüste) am Rand ----
   {
     const rockish = map.decor === 'cactus';
-    const bushCol = { pine: 0x3d7a3a, palm: 0x4f8a3e, vine: 0x6a7f3a }[map.decor] ?? 0x4c9a4a;
+    const bushCol = { pine: 0x3d7a3a, palm: 0x4f8a3e, vine: 0x6a7f3a, garda: 0x4a7436 }[map.decor] ?? 0x4c9a4a;
     let bushGeo;
     if (rockish) {
       bushGeo = mergeGeometries([colored(blob(0.7, 1, 5, 0.7).translate(0, 0.4, 0), 0xffffff), colored(blob(0.5, 1, 6, 0.7).translate(0.6, 0.3, 0.2), 0xe0e0e0)]);
@@ -768,10 +861,11 @@ export function buildTrackMesh(track, quality = 'high') {
       vine: [0xffe04a, 0xffffff, 0xd88a3a],
       pine: [0xffffff, 0xfff27a],
       palm: [0xff6ab0, 0xffffff, 0xffd54a],
+      garda: [0xff5aa0, 0xffffff, 0xff8cc0, 0xffd54a, 0xc77dff], // Oleander, Margeriten
     }[map.decor];
     if (flowerCols) {
       const fl = [];
-      const fn = Math.round(range * 2 * (map.decor === 'round' ? 0.5 : 0.15) * dens);
+      const fn = Math.round(range * 2 * (map.decor === 'round' ? 0.5 : map.decor === 'garda' ? 0.25 : 0.15) * dens);
       for (let i = 0; i < fn; i++) {
         const s = track.meshFrom + rng() * range;
         const lat = (rng() < 0.5 ? -1 : 1) * (hw + 1.2 + Math.pow(rng(), 1.3) * 16);
@@ -1035,6 +1129,403 @@ export function buildTrackMesh(track, quality = 'high') {
     if (spotOk(chapel.s, chapel.side * chapel.lat, 8)) building({ ...chapel, w: 5.5, l: 8, h: 4.4, win: 2, doorSide: -1, tower: 8.5, wallCol: 0xf2ece0 });
   }
 
+  // ---- Gardasee: See, Uferstraße mit Mauern, Torri del Benaco (Häuser, Hafen, Scaliger-Burg), Boote, Limonaie ----
+  function buildGarda() {
+    const gr = mulberry32(map.seed * 23 + 9);
+    const side = lakeSide || 1; // Seeseite
+    const land = -side; // Bergseite
+    const L = range;
+    const wp = {};
+    const cTmp = new THREE.Color();
+    const animated = [];
+    const T = town || { s0: L * 0.5, s1: L * 0.5 };
+    const tl = T.s1 - T.s0;
+    const inT = (s, pad = 0) => s > T.s0 - pad && s < T.s1 + pad;
+
+    // ---- See: Fläche innerhalb der Uferlinie ----
+    const shore = [];
+    const shape = new THREE.Shape();
+    for (let s0 = track.meshFrom; s0 < track.meshTo - 0.1; s0 += 6) {
+      worldAt(s0, side * (hw + 8), wp);
+      shore.push([wp.x, wp.z]);
+      if (shore.length === 1) shape.moveTo(wp.x, -wp.z); else shape.lineTo(wp.x, -wp.z);
+    }
+    const farFromRoad = (x, z, d) => {
+      for (let i = 0; i < samples.length; i += 3) if ((samples[i] - x) ** 2 + (samples[i + 1] - z) ** 2 < d * d) return false;
+      return true;
+    };
+    const inLake = (x, z) => { // Strahltest gegen die Uferlinie
+      let inside = false;
+      for (let i = 0, j = shore.length - 1; i < shore.length; j = i++) {
+        const [xi, zi] = shore[i], [xj, zj] = shore[j];
+        if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+      }
+      return inside;
+    };
+    let waterMat;
+    if (hi) {
+      const nor = waveNormalTexture(256, map.seed);
+      nor.colorSpace = THREE.NoColorSpace;
+      nor.repeat.set(1 / 14, 1 / 14);
+      waterMat = new THREE.MeshStandardMaterial({ color: 0x2a6f92, roughness: 0.07, metalness: 0.1, normalMap: nor, normalScale: new THREE.Vector2(0.4, 0.4), envMapIntensity: 1.15 });
+      animated.push((dt) => { nor.offset.x += dt * 0.012; nor.offset.y += dt * 0.007; });
+    } else waterMat = new THREE.MeshLambertMaterial({ color: 0x3a82a8 });
+    const water = new THREE.Mesh(new THREE.ShapeGeometry(shape, 1).rotateX(-Math.PI / 2), waterMat);
+    water.position.y = level;
+    water.receiveShadow = hi;
+    group.add(water);
+
+    // ---- Stein-Bänder (Kaimauern, Brüstungen, Stützmauern) ----
+    // prof(s) → [[lat, y], ...] Querschnitt; aufeinanderfolgende Querschnitte werden zu Flächen verbunden, Enden geschlossen.
+    // UV: u entlang der Strecke, v = Höhe + Seitenabstand (passt für senkrechte und waagerechte Flächen)
+    const stoneMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: stoneTexture(), side: THREE.DoubleSide });
+    const band = (s0, s1, prof, color, ds = 2) => {
+      const pos = [], cols = [], uvs = [], idx = [];
+      let prev = -1, n = 0;
+      for (let s = s0; ; s = Math.min(s1, s + ds)) {
+        const pr = prof(s);
+        const v0 = pos.length / 3;
+        for (const [lat, y] of pr) {
+          worldAt(s, lat, wp);
+          pos.push(wp.x, y, wp.z);
+          cTmp.set(color).multiplyScalar(0.86 + gr() * 0.24);
+          cols.push(cTmp.r, cTmp.g, cTmp.b);
+          uvs.push(s / 2.2, (y + Math.abs(lat)) / 1.1);
+        }
+        n = pr.length;
+        if (prev >= 0) for (let k = 0; k < n - 1; k++) { const a = prev + k, b = v0 + k; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+        else for (let k = 1; k < n - 1; k++) idx.push(v0, v0 + k, v0 + k + 1);
+        prev = v0;
+        if (s >= s1) break;
+      }
+      for (let k = 1; k < n - 1; k++) idx.push(prev, prev + k, prev + k + 1);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, stoneMat);
+      mesh.castShadow = quality === 'high';
+      mesh.receiveShadow = hi;
+      group.add(mesh);
+    };
+    // Mauer zwischen l0 und l1 (Seitenabstand, beide > 0) auf Seite sg; top = Höhe über dem Boden
+    const wallRun = (sg, s0, s1, l0, l1, top) => band(s0, s1, (s) => {
+      const yA = groundAt(s, sg * l0), yB = groundAt(s, sg * l1);
+      const t = Math.max(yA + top, yB + 0.3);
+      return [[sg * l0, yA - 0.3], [sg * l0, t], [sg * l1, t], [sg * l1, yB - 0.3]];
+    }, 0xf2ece2);
+    const runs = (s0, s1, minL, maxL, gapMin, gapMax, skip, fn) => {
+      let s = s0;
+      while (s < s1) {
+        const len = Math.min(minL + gr() * (maxL - minL), s1 - s);
+        if (len > 6 && !skip(s, s + len)) fn(s, s + len);
+        s += len + gapMin + gr() * (gapMax - gapMin);
+      }
+    };
+    const nearTown = (a, b) => b > T.s0 - 12 && a < T.s1 + 12;
+    // Brüstung am Seeufer (Gardesana), Lücken für Zufahrten
+    runs(track.meshFrom + 14, track.meshTo - 14, 50, 150, 6, 22, nearTown, (a, b) => wallRun(side, a, b, hw + 6.05, hw + 6.55, 0.85));
+    // Stützmauern am Hang (Bergseite)
+    const lemon = [track.meshFrom + L * 0.35, track.meshFrom + L * 0.8].filter((x) => !inT(x, 60));
+    runs(track.meshFrom + 30, track.meshTo - 30, 40, 120, 30, 90, (a, b) => nearTown(a, b) || lemon.some((x) => b > x - 30 && a < x + 30), (a, b) => wallRun(land, a, b, hw + 5.6, hw + 6.4, 1.1));
+    for (const x of lemon) wallRun(land, x - 26, x + 26, hw + 5.6, hw + 6.4, 1.4);
+
+    // ---- Limonaie (Zitronengärten): weiße Pfeiler mit Holzbalken auf Terrassen ----
+    const pillars = [], beams = [];
+    for (const x of lemon) {
+      for (let li = 0; li < 4; li++) {
+        const lat = land * (hw + 9 + li * 4.2);
+        const top = groundAt(x, lat) + 5.6;
+        for (let k = -5; k <= 5; k++) {
+          const s = x + k * 4.2;
+          if (!spotOk(s, lat, 6)) continue;
+          worldAt(s, lat, wp);
+          const gy = groundAt(s, lat);
+          pillars.push({ s, x: wp.x, z: wp.z, y: gy - 0.3, ry: -wp.theta, sx: 0.62, sy: top - gy + 0.3, sz: 0.62 });
+          if (k < 5) {
+            worldAt(s + 2.1, lat, wp);
+            beams.push({ s, x: wp.x, z: wp.z, y: top - 0.05, ry: -wp.theta, sx: 0.16, sy: 0.16, sz: 4.3, r: 0.55, g: 0.4, b: 0.28 });
+          }
+          if (li < 3) {
+            worldAt(s, lat + land * 2.1, wp);
+            beams.push({ s, x: wp.x, z: wp.z, y: top - 0.05, ry: -wp.theta, sx: 4.3, sy: 0.14, sz: 0.14, r: 0.5, g: 0.36, b: 0.25 });
+          }
+        }
+      }
+    }
+    const unitBox = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
+    scatter(unitBox, new THREE.MeshLambertMaterial({ color: 0xf1ece0 }), pillars, { shadow: quality === 'high', receive: hi });
+    scatter(unitBox, new THREE.MeshLambertMaterial({ vertexColors: true }), beams, { shadow: quality === 'high' });
+
+    if (!town) return { update: (dt) => animated.forEach((f) => f(dt)) };
+
+    // ---- Kai (Uferplattform) im Ort: vor den Häusern, Hafenbecken, Burg ----
+    const quayTop = (s) => terrainAt(s) + 0.03;
+    const quay = (a, b, l1) => band(a, b, (s) => [[side * (hw + 6.0), quayTop(s)], [side * l1, quayTop(s)], [side * l1, level - 2.5], [side * (hw + 6.0), level - 2.5]], 0xfff6e2);
+    const qA = T.s0 + tl * 0.42, qB = T.s0 + tl * 0.66;
+    quay(T.s0 - 6, qA, hw + 19);
+    quay(qA, qB, hw + 10.5);
+    quay(qB, T.s1 + 6, hw + 35);
+
+    // ---- Häuser ----
+    const HB = { wall: [], roof: [], win: [], shut: [], wood: [], awn: [], stone: [] };
+    const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), P0 = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1);
+    const frameAt = (s, lat, y, rot = 0) => { worldAt(s, lat, wp); return M.compose(P0.set(wp.x, y, wp.z), Q.setFromAxisAngle(Y, -wp.theta + rot), ONE).clone(); };
+    const put = (key, geo, Mx, color) => {
+      const g = geo.index ? geo.toNonIndexed() : geo;
+      if (g.attributes.uv) g.deleteAttribute('uv');
+      g.applyMatrix4(Mx);
+      const c = new THREE.Color(color);
+      const arr = new Float32Array(g.attributes.position.count * 3);
+      for (let i = 0; i < arr.length; i += 3) { arr[i] = c.r; arr[i + 1] = c.g; arr[i + 2] = c.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+      HB[key].push(g);
+    };
+    const box = (key, Mx, w, h, d, x, y, z, color, rotZ = 0) => {
+      const g = new THREE.BoxGeometry(w, h, d);
+      if (rotZ) g.rotateZ(rotZ);
+      put(key, g.translate(x, y, z), Mx, color);
+    };
+    const gable = (w, l, h, rh, ov = 0.35) => { // Satteldach, First entlang z
+      const hx = w / 2 + ov, hz = l / 2 + ov;
+      const Pv = [[-hx, h, -hz], [hx, h, -hz], [0, h + rh, -hz], [-hx, h, hz], [hx, h, hz], [0, h + rh, hz]];
+      const tri = [0, 2, 1, 3, 4, 5, 0, 3, 5, 0, 5, 2, 1, 2, 5, 1, 5, 4, 0, 1, 4, 0, 4, 3];
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(tri.flatMap((i) => Pv[i]), 3));
+      g.computeVertexNormals();
+      return g;
+    };
+    const WALLS = [0xf0d9a8, 0xe9a97f, 0xf6e9cf, 0xdc8f72, 0xf2c766, 0xd8dcbc, 0xf3d0c0, 0xe7c08e];
+    const SHUT = [0x3f6b43, 0x2f5a3c, 0x6b4a2e, 0x51677a];
+    const AWN = [0xb8322a, 0x2f7a4a, 0x2a5a9a, 0xd8792a];
+    const ROOF = [0xb0532e, 0xa4482c, 0xbd6a3e, 0x9c4a30];
+    const pick = (a) => a[Math.floor(gr() * a.length)];
+    const house = (s, sg, front, w, l, floors, base, shop) => {
+      const latC = sg * (front + w / 2);
+      const Mx = frameAt(s, latC, base);
+      const H = floors * 3 + 0.4;
+      const wc = pick(WALLS), sc = pick(SHUT);
+      box('wall', Mx, w, H + 5, l, 0, (H - 5) / 2, 0, wc);
+      box('stone', Mx, w + 0.12, 0.22, l + 0.12, 0, H, 0, cTmp.set(wc).multiplyScalar(1.08).getHex()); // Gesims
+      put('roof', gable(w, l, H + 0.1, w * 0.2), Mx, pick(ROOF));
+      const fx = -sg * (w / 2 + 0.04); // Fassade zur Straße
+      const n = Math.max(1, Math.floor((l - 1) / 2.5));
+      for (let f = 0; f < floors; f++) {
+        for (let i = 0; i < n; i++) {
+          const z = -l / 2 + (l / n) * (i + 0.5);
+          if (f === 0) {
+            if (shop && i === 0) continue;
+            if (i === n - 1 || n === 1) { box('wood', Mx, 0.1, 2.25, 1.1, fx, 1.12, z, 0x5a3a24); continue; } // Tür
+          }
+          box('win', Mx, 0.08, 1.35, 0.82, fx, f * 3 + 1.55, z, 0x23262c);
+          if (hi) for (const dz of [-0.66, 0.66]) box('shut', Mx, 0.07, 1.42, 0.46, fx - sg * 0.03, f * 3 + 1.55, z + dz, sc);
+          if (quality === 'high') box('win', Mx, 0.08, 1.2, 0.75, -fx, f * 3 + 1.6, z, 0x2b2e34); // Rückseite
+        }
+      }
+      if (shop) { // Laden mit Markise
+        const z = -l / 2 + (l / n) * 0.5;
+        box('win', Mx, 0.08, 2.0, Math.min(2.4, l / n - 0.3), fx, 1.15, z, 0x30363e);
+        box('awn', Mx, 1.5, 0.07, Math.min(2.8, l / n), fx - sg * 0.72, 2.75, z, pick(AWN), sg * 0.28);
+      }
+    };
+    // Bergseite: geschlossene Häuserzeile entlang der Gardesana
+    for (let s = T.s0 + 2; s < T.s1 - 4;) {
+      const l = 7 + gr() * 4, w = 8 + gr() * 3, floors = 2 + Math.floor(gr() * 2.4);
+      const sc = s + l / 2;
+      const front = hw + 5.8;
+      house(sc, land, front, w, l, floors, groundAt(sc, land * front) - 0.05, gr() < 0.45);
+      s += l + (gr() < 0.25 ? 2.5 + gr() * 3 : 0.2);
+    }
+    // Seeseite: Altstadthäuser auf dem Kai
+    for (let s = T.s0 + 1; s < qA - 6;) {
+      const l = 7 + gr() * 3.5, w = 7 + gr() * 2, floors = 2 + Math.floor(gr() * 2.2);
+      const sc = s + l / 2;
+      house(sc, side, hw + 7.2, w, l, floors, quayTop(sc), gr() < 0.6);
+      s += l + 0.2;
+    }
+
+    // ---- Scaliger-Burg auf dem Kai: Ringmauer, Ecktürme, Bergfried, Schwalbenschwanz-Zinnen ----
+    {
+      const sC = T.s0 + tl * 0.83;
+      const Wd = 22, Ln = 26, latC = side * (hw + 11 + Wd / 2);
+      const Mx = frameAt(sC, latC, quayTop(sC) - 0.1);
+      const stoneC = () => cTmp.set(0xcbb48c).multiplyScalar(0.88 + gr() * 0.2).getHex();
+      const merlons = (x0, z0, x1, z1, y, th) => { // Zinnenreihe von (x0,z0) nach (x1,z1)
+        const len = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(len / 1.5);
+        const along = Math.abs(x1 - x0) < 1e-3;
+        for (let i = 0; i < n; i++) {
+          const t = (i + 0.5) / n, x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+          const c = stoneC();
+          box('stone', Mx, along ? th : 0.85, 1.0, along ? 0.85 : th, x, y + 0.5, z, c);
+          if (hi) for (const d of [-0.3, 0.3]) box('stone', Mx, along ? th : 0.25, 0.42, along ? 0.25 : th, x + (along ? 0 : d), y + 1.2, z + (along ? d : 0), c); // Schwalbenschwanz
+        }
+      };
+      const wallH = 7.5, th = 1.4;
+      const hx = Wd / 2, hz = Ln / 2;
+      for (const [x0, z0, x1, z1] of [[-hx, -hz, hx, -hz], [-hx, hz, hx, hz], [-hx, -hz, -hx, hz], [hx, -hz, hx, hz]]) {
+        const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, along = x0 === x1;
+        box('stone', Mx, along ? th : Wd, wallH + 4, along ? Ln : th, cx, (wallH - 4) / 2, cz, stoneC());
+        merlons(x0, z0, x1, z1, wallH, th);
+      }
+      box('win', Mx, 0.3, 4.2, 3.2, -side * (hx + 0.55), 2.1, 0, 0x2a2622); // Tor zur Straße
+      const tower = (x, z, w, h) => {
+        box('stone', Mx, w, h + 4, w, x, (h - 4) / 2, z, stoneC());
+        merlons(x - w / 2, z - w / 2, x + w / 2, z - w / 2, h, 0.9); merlons(x - w / 2, z + w / 2, x + w / 2, z + w / 2, h, 0.9);
+        merlons(x - w / 2, z - w / 2, x - w / 2, z + w / 2, h, 0.9); merlons(x + w / 2, z - w / 2, x + w / 2, z + w / 2, h, 0.9);
+        for (let k = 1; k < h / 4; k++) for (const sg of [-1, 1]) box('win', Mx, 0.1, 1.2, 0.35, sg * (w / 2 + 0.05), k * 4, z, 0x2a2622); // Schießscharten
+      };
+      tower(-side * hx, -hz, 4.4, 12.5);
+      tower(-side * hx, hz, 4.4, 12.5);
+      tower(side * hx, -hz, 4.4, 11.5);
+      tower(side * (hx - 3.2), hz - 3.2, 6.8, 21); // Bergfried
+    }
+
+    // Mole ins Hafenbecken + Poller
+    const pierS = T.s0 + tl * 0.58;
+    {
+      const Mx = frameAt(pierS, side * (hw + 10.5 + 11), 0);
+      box('stone', Mx, 22, quayTop(pierS) - level + 2.5, 3.2, 0, (quayTop(pierS) + level - 2.5) / 2, 0, 0xd2c6ae);
+      for (let i = 0; i < 6; i++) box('wood', Mx, 0.28, 0.5, 0.28, -11 + 2 + i * 3.6, quayTop(pierS) + 0.25, side * 1.3, 0x3a3a3c);
+    }
+    const flushHB = () => {
+      for (const k of Object.keys(HB)) {
+        if (!HB[k].length) continue;
+        const g = mergeGeometries(HB[k]);
+        HB[k].forEach((x) => x.dispose());
+        g.computeVertexNormals();
+        const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: k === 'roof' || k === 'awn' ? THREE.DoubleSide : THREE.FrontSide }));
+        mesh.castShadow = hi;
+        mesh.receiveShadow = hi;
+        group.add(mesh);
+      }
+    };
+    flushHB();
+
+    // ---- Palmen an der Promenade ----
+    const palmItems = [];
+    for (let s = T.s0 + 4; s < qB; s += 13 + gr() * 6) {
+      const lat = side * (s < qA ? hw + 6.6 : hw + 8.6);
+      worldAt(s, lat, wp);
+      const sz = 0.85 + gr() * 0.3;
+      palmItems.push({ s, x: wp.x, z: wp.z, y: quayTop(s) - 0.1, ry: gr() * 6.28, sx: sz, sy: sz * (0.9 + gr() * 0.2), r: 0.9 + gr() * 0.2, g: 1, b: 0.9 + gr() * 0.15 });
+    }
+    scatter(palm(map.seed + 3, quality === 'high' ? 2 : hi ? 1 : 0), new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), palmItems, { shadow: quality === 'high' });
+
+    // ---- Laternen im Ort ----
+    {
+      const poleGeo = mergeGeometries([
+        vcol(new THREE.CylinderGeometry(0.06, 0.09, 4.6, 6).translate(0, 2.3, 0), (c) => c.set(0x2c3a30)),
+        vcol(new THREE.CylinderGeometry(0.035, 0.035, 0.9, 5).rotateZ(Math.PI / 2).translate(-0.45, 4.45, 0), (c) => c.set(0x2c3a30)),
+        vcol(new THREE.CylinderGeometry(0.2, 0.12, 0.2, 6).translate(-0.85, 4.35, 0), (c) => c.set(0x2c3a30)),
+      ]);
+      const headGeo = new THREE.SphereGeometry(0.14, 8, 6).translate(-0.85, 4.18, 0);
+      const poles = [];
+      for (let s = T.s0 - 4; s < T.s1 + 4; s += 19) {
+        for (const sg of [-1, 1]) {
+          const lat = sg * (hw + 4.4);
+          worldAt(s + (sg > 0 ? 0 : 9.5), lat, wp);
+          poles.push({ s, x: wp.x, z: wp.z, y: groundAt(s, lat) - 0.05, ry: -wp.theta + (sg > 0 ? 0 : Math.PI), sx: 1 });
+        }
+      }
+      scatter(poleGeo, new THREE.MeshLambertMaterial({ vertexColors: true }), poles, { shadow: quality === 'high' });
+      scatter(headGeo, new THREE.MeshBasicMaterial({ color: 0xfff1c4 }), poles);
+    }
+
+    // ---- Ortsschilder (weiß, schwarzer Rand; am Ortsende rot durchgestrichen) ----
+    const sign = (s, end) => {
+      const tex = canvasTexture(512, 192, (g, w, h) => {
+        g.fillStyle = '#f7f7f2'; g.fillRect(0, 0, w, h);
+        g.strokeStyle = '#111'; g.lineWidth = 10; g.strokeRect(14, 14, w - 28, h - 28);
+        g.fillStyle = '#111'; g.font = '700 50px "Arial Narrow", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        const words = map.town.name.split(' ');
+        const mid = Math.ceil(words.length / 2);
+        g.fillText(words.slice(0, mid).join(' '), w / 2, h * 0.37);
+        g.fillText(words.slice(mid).join(' '), w / 2, h * 0.67);
+        if (end) { g.strokeStyle = '#c8102e'; g.lineWidth = 16; g.beginPath(); g.moveTo(40, h - 30); g.lineTo(w - 40, 30); g.stroke(); }
+      });
+      const hold = new THREE.Group();
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9), new THREE.MeshLambertMaterial({ map: tex }));
+      plate.position.y = 2.1;
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9).rotateY(Math.PI), new THREE.MeshLambertMaterial({ color: 0x8a8d92 }));
+      back.position.set(0, 2.1, -0.01);
+      hold.add(plate, back);
+      for (const x of [-0.8, 0.8]) {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.6, 6), new THREE.MeshLambertMaterial({ color: 0x8a8d92 }));
+        post.position.set(x, 1.3, -0.04);
+        hold.add(post);
+      }
+      const lat = hw + 2.6;
+      worldAt(s, lat, wp);
+      hold.position.set(wp.x, groundAt(s, lat), wp.z);
+      hold.rotation.y = -wp.theta;
+      hold.traverse((o) => { o.castShadow = hi; });
+      group.add(hold);
+    };
+    sign(T.s0 - 28, false);
+    sign(T.s1 + 14, true);
+
+    // ---- Boote: im Hafen (vertäut) und Segelboote auf dem See (schaukeln) ----
+    const hull = mergeGeometries([
+      vcol(new THREE.SphereGeometry(1, hi ? 14 : 8, hi ? 6 : 4, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2).scale(0.9, 0.55, 2.5), (c) => c.setRGB(1, 1, 1)),
+      vcol(new THREE.CylinderGeometry(0.9, 0.9, 0.08, hi ? 14 : 8).scale(1, 1, 2.78).translate(0, 0.02, 0), (c) => c.setRGB(0.95, 0.92, 0.85)),
+      vcol(new THREE.BoxGeometry(0.9, 0.5, 1.1).translate(0, 0.27, 0.6), (c) => c.setRGB(0.95, 0.95, 0.95)),
+    ]);
+    const rig = mergeGeometries([
+      vcol(new THREE.CylinderGeometry(0.05, 0.06, 8, 5).translate(0, 4.05, -0.4), (c) => c.setRGB(0.8, 0.8, 0.82)),
+      vcol(new THREE.CylinderGeometry(0.04, 0.04, 3.2, 5).rotateX(Math.PI / 2).translate(0, 1.0, 1.2), (c) => c.setRGB(0.6, 0.6, 0.62)),
+      (() => { // Großsegel + Fock
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute([0, 1.1, -0.35, 0, 7.8, -0.35, 0, 1.1, 2.7, 0, 1.0, -0.5, 0, 7.2, -0.5, 0, 0.6, -2.6], 3));
+        g.computeVertexNormals();
+        return vcol(g, (c) => c.setRGB(1, 1, 1));
+      })(),
+    ]);
+    const boats = [];
+    for (let i = 0; i < 9; i++) { // im Hafen
+      const s = qA + 6 + (i / 9) * (qB - qA - 10);
+      if (Math.abs(s - pierS) < 3.5) continue;
+      const lat = side * (hw + 13.5 + gr() * 12);
+      worldAt(s, lat, wp);
+      boats.push({ x: wp.x, z: wp.z, ry: -wp.theta + side * Math.PI / 2 + (gr() - 0.5) * 0.4, k: 0.55 + gr() * 0.3, sail: false, c: pick([0xffffff, 0x2a5a9a, 0xb8322a, 0x2f7a4a, 0xf2c766]), ph: gr() * 6 });
+    }
+    for (let i = 0, tries = 0; i < (hi ? 14 : 7) && tries < 400; tries++) { // Segelboote draußen
+      const s = track.meshFrom + gr() * L, lat = side * (hw + 40 + gr() * 260);
+      worldAt(s, lat, wp);
+      if (!inLake(wp.x, wp.z) || !farFromRoad(wp.x, wp.z, hw + 34)) continue;
+      boats.push({ x: wp.x, z: wp.z, ry: gr() * 6.28, k: 0.9 + gr() * 0.5, sail: true, c: gr() < 0.7 ? 0xffffff : pick([0x1d4fd8, 0xc8102e, 0x2b2e33]), ph: gr() * 6 });
+      i++;
+    }
+    const nSail = boats.filter((b) => b.sail).length;
+    const hullIM = new THREE.InstancedMesh(hull, new THREE.MeshLambertMaterial({ vertexColors: true }), boats.length);
+    const rigIM = new THREE.InstancedMesh(rig, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), Math.max(1, nSail));
+    rigIM.count = nSail;
+    boats.forEach((b, i) => hullIM.setColorAt(i, cTmp.set(b.c)));
+    hullIM.frustumCulled = rigIM.frustumCulled = false;
+    hullIM.castShadow = quality === 'high';
+    group.add(hullIM, rigIM);
+    let bt = 0;
+    const eu = new THREE.Euler(0, 0, 0, 'YXZ'), mq = new THREE.Quaternion(), mp = new THREE.Vector3(), ms = new THREE.Vector3(), m4 = new THREE.Matrix4();
+    const placeBoats = (dt) => {
+      bt += dt;
+      let r = 0;
+      boats.forEach((b, i) => {
+        const roll = Math.sin(bt * 1.1 + b.ph) * (b.sail ? 0.06 : 0.035) + (b.sail ? 0.12 : 0);
+        mq.setFromEuler(eu.set(Math.sin(bt * 0.8 + b.ph * 1.3) * 0.03, b.ry, roll));
+        m4.compose(mp.set(b.x, level + 0.12 + Math.sin(bt * 1.3 + b.ph) * 0.06, b.z), mq, ms.setScalar(b.k));
+        hullIM.setMatrixAt(i, m4);
+        if (b.sail) rigIM.setMatrixAt(r++, m4);
+      });
+      hullIM.instanceMatrix.needsUpdate = rigIM.instanceMatrix.needsUpdate = true;
+    };
+    placeBoats(0);
+    let acc = 0;
+    animated.push((dt) => { acc += dt; if (acc > (hi ? 0.033 : 0.1)) { placeBoats(acc); acc = 0; } });
+
+    return { update: (dt) => animated.forEach((f) => f(dt)) };
+  }
+
   // ---- Hindernisse ----
   const rockGeo = colored(blob(0.8, 1, 9, 0.8), 0xffffff);
   const rockMat = new THREE.MeshLambertMaterial({ vertexColors: true, color: col.rock });
@@ -1229,7 +1720,7 @@ export function buildTrackMesh(track, quality = 'high') {
     arch(track.length, 'ZIEL', true);
   }
 
-  return { group, rockMeshes, padMeshes };
+  return { group, rockMeshes, padMeshes, update: gardaFx ? gardaFx.update : null };
 }
 
 export function disposeObject(root) {

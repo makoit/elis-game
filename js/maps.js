@@ -10,7 +10,12 @@
 //  obst:   Dichte pro Meter: rock, log (Baumstamm), bale (Strohballen), cone (Kegel), puddle, mud, sand
 //  slaloms: Kegel-Slalom { s, n, gap }
 //  pads:   Dichte der Boost-Felder, trees: Bäume pro 100 m, crowd: Zuschauergruppen pro 100 m
-//  decor:  Landschaft (trackmesh.js): 'round' Laubbäume | 'pine' Nadelwald | 'palm' Küste | 'cactus' Wüste | 'vine' Weinberg | 'none'
+//  decor:  Landschaft (trackmesh.js): 'round' Laubbäume | 'pine' Nadelwald | 'palm' Küste | 'cactus' Wüste | 'vine' Weinberg
+//          | 'garda' Seeufer (Oliven, Zypressen, Ort, Burg, Hafen) | 'none'
+//  lake:   { side, depth } See neben der Strecke (side 1 = rechts = Innenseite eines Rechts-Rundkurses), Spiegel `depth` m
+//          unter dem tiefsten Punkt der Straße
+//  town:   { s, len, name } Ortsdurchfahrt (Häuser, Laternen, Ortsschilder), nur mit decor 'garda'
+//  colors.edge / colors.cliff / colors.beach: Randstreifen, Felsabbruch und Kiesufer (optional)
 //  berm:   true = steile Anlieger in den Kurven (Pumptrack)
 //  neon:   Farbe der Leuchtstreifen am Rand (Abendstimmung)
 //  light:  { sun, sunI, hemi, env } Lichtstimmung
@@ -223,5 +228,38 @@ export const MAPS = [
     colors: { sky: 0x5f9fd8, fog: 0xf4c98e, grass: 0x949a4e, verge: 0xa8905a, road: 0xc8a878, ramp: 0xe0a64a, rock: 0x9a8f80 },
     fogRange: [70, 300],
     light: { sun: 0xffc58a, sunI: 2.3, hemi: 0.75, env: 0.8, dir: [0.75, 0.34, -0.45] },
+  },
+  {
+    id: 'gardasee',
+    name: 'Gardasee-Runde',
+    emoji: '⛵',
+    desc: 'Die Gardesana am Seeufer entlang durch Torri del Benaco – Olivenhaine, Zypressen, Hafen und Scaliger-Burg. Lange Geraden für Rennrad und Motorrad.',
+    difficulty: 2,
+    loop: true, laps: { def: 1, max: 5 },
+    length: 3000,
+    width: 8,
+    seed: 131,
+    surface: 'asphalt',
+    decor: 'garda',
+    trees: 11,
+    crowd: 0.8,
+    lake: { side: 1, depth: 1.4 },
+    town: { s: 1520, len: 400, name: 'TORRI DEL BENACO' },
+    curves: [{ a: 0.42, wl: 750 }, { a: 0.26, wl: 375 }, { a: 0.1, wl: 150 }],
+    hills: [{ a: 2.6, wl: 750 }, { a: 0.8, wl: 300 }],
+    ramps: [
+      { type: 'table', s: 760, h: 1.4, lip: 0.4, top: 30, down: 0.12 },
+      { type: 'kicker', s: 2560, h: 1.2, lip: 0.38, down: 0.12 },
+    ],
+    obst: { cone: 0.003, puddle: 0.002 },
+    slaloms: [{ s: 380, n: 6, gap: 12 }, { s: 2250, n: 5, gap: 12 }],
+    pads: 0.006,
+    whoops: [],
+    colors: {
+      sky: 0x6fb8ec, fog: 0xd3e6f2, grass: 0x6b9a42, verge: 0xbfae84, edge: 0xd9d4c8, road: 0x404248, ramp: 0xc9c9cf, rock: 0x9c968a,
+      cliff: 0xa0988a, beach: 0xcfc8b8,
+    },
+    fogRange: [90, 440],
+    light: { sun: 0xfff1d6, sunI: 2.2, hemi: 0.85, env: 0.9, dir: [0.45, 0.62, 0.55] },
   },
 ];

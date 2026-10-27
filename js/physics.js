@@ -8,9 +8,10 @@
 export const G = 9.81; // Erdbeschleunigung (Längsrichtung)
 export const G_AIR = 11.5; // Flugphase etwas "schwerer" – knackigere, kürzere Sprünge
 export const LAT_SPEED = 5; // max. Seitengeschwindigkeit bei vollem Lenkeinschlag (m/s)
-const MASS = 85; // Fahrer + Rad (kg)
+const MASS = 85; // Fahrer + Rad (kg); Motorräder bringen ihre Masse in bikedata mit
 const RHO = 1.2; // Luftdichte
-const CDA = { trail: 0.45, downhill: 0.5, road: 0.3, gravel: 0.36 }; // Stirnfläche × cW
+const CDA = { trail: 0.45, downhill: 0.5, road: 0.3, gravel: 0.36 }; // Stirnfläche × cW (Motorräder: bike.cdA)
+const JUMP_VY = { bike: 25, moto: 9.5 }; // max. Absprung-Steiggeschwindigkeit (Motorräder sind so schnell, dass sie sonst in den Himmel fliegen)
 const CRR = { asphalt: 0.005, dirt: 0.011 };
 const MU = { asphalt: 0.85, dirt: 0.7 }; // Haftreibung Reifen/Boden
 export const SPEED_SCALE = 0.5; // Werte in bikedata (vmax) → reale Spitzengeschwindigkeit in der Ebene
@@ -21,7 +22,7 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 export function cornerGrip(sim, latGrip = 1) {
   const { t, b } = sim;
   const surf = t.map.surface;
-  let a = (MU[surf] ?? 0.7) * G * clamp(b.surface[surf], 0.6, 1.1) * latGrip;
+  let a = (MU[surf] ?? 0.7) * G * clamp(b.surface[surf], 0.6, 1.1) * (b.corner ?? 1) * latGrip;
   if (t.map.berm) a *= 1 + 1.4 * Math.min(1, Math.abs(t.bankAt(sim.s)) / t.bankMax);
   else a *= 1 + 0.25 * Math.min(1, Math.abs(t.bankAt(sim.s)) / t.bankMax);
   return a * (1 + 0.3 * sim.assist);
@@ -88,17 +89,21 @@ export class BikeSim {
     this.stumble = 0; // Kontrollverlust nach Rempler / Aufprall (s)
     this.bumpCool = 0;
     this.power = 0; // aktuelle Tretleistung 0..1 (für die Trittfrequenz)
+    this.vLimit = Infinity; // Tempolimit (m/s), z. B. Kinder-Einstellung für Motorräder
 
     // abgeleitete Kennwerte
-    this.cdA = CDA[bike.cat] ?? 0.42;
+    this.m = bike.mass ?? MASS;
+    this.cdA = bike.cdA ?? CDA[bike.cat] ?? 0.42;
     this.vTop = bike.vmax * SPEED_SCALE; // Spitze in der Ebene auf gutem Belag
-    this.P = (CRR.asphalt * MASS * G + 0.5 * RHO * this.cdA * this.vTop * this.vTop) * this.vTop; // Watt
-    this.Fmax = MASS * bike.accel * 0.55; // Traktions-/Kraftgrenze beim Antritt (kleiner Gang)
+    this.P = (CRR.asphalt * this.m * G + 0.5 * RHO * this.cdA * this.vTop * this.vTop) * this.vTop; // Watt
+    this.Fmax = this.m * bike.accel * 0.55; // Traktions-/Kraftgrenze beim Antritt (kleiner Gang)
     this.brakeA = bike.brake * 0.34; // Verzögerung (m/s²)
+    this.jumpVy = JUMP_VY[bike.moto ? 'moto' : 'bike'];
   }
 
   step(dt, c) {
     const { t, b } = this;
+    const MASS = this.m;
     const ev = this.events;
     ev.length = 0;
     const ws = t.wrap(this.s); // Position innerhalb der Runde (Hindernisse gelten pro Runde)
@@ -132,8 +137,8 @@ export class BikeSim {
     let F = -0.5 * RHO * this.cdA * this.v * this.v;
     this.power = 0;
     if (!this.air) {
-      if (c.gas) {
-        const p = this.P * sf * clamp(grip, 0.7, 1.1) * ctl;
+      if (c.gas && this.v < this.vLimit) {
+        const p = this.P * sf * clamp(grip, 0.7, 1.1) * ctl * clamp((this.vLimit - this.v) / 2, 0, 1);
         const f = Math.min(this.Fmax * sf, p / Math.max(this.v, 1.5));
         F += f;
         this.power = clamp(f * Math.max(this.v, 1.5) / this.P, 0, 1.2);
@@ -143,7 +148,7 @@ export class BikeSim {
       F -= MASS * G * sinA * (sl < 0 ? b.slopeK : 1);
       F -= (CRR[surf] ?? 0.01) / Math.max(0.6, grip) * MASS * G;
       if (c.brake) F -= MASS * this.brakeA * Math.min(1, this.v / 1.5) * (this.offroad ? 0.7 : 1);
-      if (this.offroad) F -= MASS * (0.6 + (1 - b.terrain) * 2.6) + 4 * this.v * (1 - b.terrain);
+      if (this.offroad) F -= MASS * (0.6 + (1 - b.terrain) * 2.6 + (b.moto ? 0.1 : 0.047) * this.v * (1 - b.terrain));
     }
     if (this.boost > 0) { F += MASS * 4.2; this.boost -= dt; }
     let latGrip = 1;
@@ -202,7 +207,7 @@ export class BikeSim {
       if (ground < ballistic - 0.03 && this.v > 3) {
         this.air = true;
         this.airTime = 0;
-        this.vy = vyG - G_AIR * dt;
+        this.vy = Math.min(vyG, this.jumpVy) - G_AIR * dt;
         if (this.wheelie > 0.25) this.vy += 1.3; // am Absprung gezogen → mehr Höhe
         this.y = ballistic;
         ev.push({ type: 'jump' });

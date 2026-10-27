@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TIRE_WALL_COLORS } from './bikedata.js';
+import { UP, v3, _m, _q, _one, clamp, smooth, prof, loft, line, spline, Bucket, canvasTex, hex, hash01 } from './geom.js';
+import { buildMoto, MOTO_GEOM, MOTO_POSES } from './motos.js';
 
 // Prozedurales, detailliertes Fahrradmodell mit Fahrer. Alle statischen Teile werden je Material zu EINEM Mesh
 // zusammengefasst (wenige Draw-Calls, wichtig fürs Tablet). Nur Räder, Kurbel und Beine bewegen sich.
@@ -10,185 +12,6 @@ import { TIRE_WALL_COLORS } from './bikedata.js';
 // mit einem anatomischen Profil (Breite/Tiefe/Versatz je Höhe) gezogen werden. Die Beine sind EIN
 // SkinnedMesh (Hüfte → Knie → Knöchel je Bein, Vertex-Farben für Hose/Haut/Socke/Schuh) = 1 Draw-Call.
 
-const UP = new THREE.Vector3(0, 1, 0);
-const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
-const _m = new THREE.Matrix4();
-const _q = new THREE.Quaternion();
-const _one = new THREE.Vector3(1, 1, 1);
-const _dir = new THREE.Vector3();
-const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
-const smooth = (x) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
-
-// ---------- Profil-Tabellen: [[s, a, b, c], ...] glatt (kubisch-hermitesch) interpolieren ----------
-function prof(rows, s) {
-  const n = rows.length;
-  if (s <= rows[0][0]) return rows[0].slice(1);
-  if (s >= rows[n - 1][0]) return rows[n - 1].slice(1);
-  let i = 0;
-  while (s > rows[i + 1][0]) i++;
-  const r0 = rows[Math.max(0, i - 1)], r1 = rows[i], r2 = rows[i + 1], r3 = rows[Math.min(n - 1, i + 2)];
-  const h = r2[0] - r1[0], u = (s - r1[0]) / h, u2 = u * u, u3 = u2 * u;
-  const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
-  const out = [];
-  for (let k = 1; k < r1.length; k++) {
-    // Tangenten begrenzen, damit das Profil zwischen den Stützstellen nicht überschwingt
-    let m1 = ((r2[k] - r0[k]) / (r2[0] - r0[0] || 1)) * h;
-    let m2 = ((r3[k] - r1[k]) / (r3[0] - r1[0] || 1)) * h;
-    const dk = r2[k] - r1[k];
-    if (dk === 0 || Math.sign(m1) !== Math.sign(dk)) m1 = (r1 === r0) ? dk : m1 * 0.5;
-    if (dk === 0 || Math.sign(m2) !== Math.sign(dk)) m2 = (r2 === r3) ? dk : m2 * 0.5;
-    out.push(h00 * r1[k] + h10 * m1 + h01 * r2[k] + h11 * m2);
-  }
-  return out;
-}
-
-// ---------- Loft: Superellipsen-Querschnitte entlang einer Kurve ----------
-// fn(s) → [w, d, o]: halbe Breite (Seitenachse), halbe Tiefe (Achse N), Versatz entlang N.
-// s ist die Profil-Koordinate (Bogenlänge − s0). ref gibt die Richtung N vor (senkrecht zur Tangente projiziert).
-// UV: u läuft um den Querschnitt (u0→u1, Start hinten = −N), v entlang (v0→v1).
-const _T = new THREE.Vector3(), _N = new THREE.Vector3(), _S = new THREE.Vector3(), _C = new THREE.Vector3();
-function loft(curve, fn, o) {
-  const { a, b, s0 = 0, ref = v3(0, 0, -1), nT = 16, nR = 12, ex = 2, u0 = 0, u1 = 1, v0 = 0, v1 = 1, grow = 0, sx = 1, ends = 0 } = o;
-  const len = curve.getLength();
-  const cols = nR + 1, rows = nT + 1;
-  const pos = new Float32Array(rows * cols * 3), uv = new Float32Array(rows * cols * 2);
-  const e = 2 / ex;
-  for (let i = 0; i < rows; i++) {
-    const ti = i / nT, tt = ti - (ends * Math.sin(2 * Math.PI * ti)) / (2 * Math.PI); // ends > 0: dichter an den Enden
-    const s = a + (b - a) * tt;
-    const arc = s + s0;
-    const t = clamp(arc / len, 0, 1);
-    curve.getPointAt(t, _C);
-    curve.getTangentAt(t, _T);
-    if (arc < 0) _C.addScaledVector(_T, arc);
-    else if (arc > len) _C.addScaledVector(_T, arc - len);
-    _N.copy(ref).addScaledVector(_T, -ref.dot(_T)).normalize();
-    _S.crossVectors(_T, _N).multiplyScalar(sx);
-    const p = fn(s);
-    const w = Math.max(0, p[0] + (p[0] > 0.004 ? grow : 0)), d = Math.max(0, p[1] + (p[1] > 0.004 ? grow : 0)), off = p[2] || 0;
-    for (let j = 0; j < cols; j++) {
-      const ph = (j / nR) * Math.PI * 2;
-      const sn = Math.sin(ph), cs = Math.cos(ph);
-      const x = Math.sign(sn) * Math.pow(Math.abs(sn), e) * w;
-      const y = off - Math.sign(cs) * Math.pow(Math.abs(cs), e) * d;
-      const k = (i * cols + j) * 3;
-      pos[k] = _C.x + _S.x * x + _N.x * y;
-      pos[k + 1] = _C.y + _S.y * x + _N.y * y;
-      pos[k + 2] = _C.z + _S.z * x + _N.z * y;
-      const kk = (i * cols + j) * 2;
-      uv[kk] = u0 + ((u1 - u0) * j) / nR;
-      uv[kk + 1] = v0 + (v1 - v0) * tt;
-    }
-  }
-  const idx = [];
-  for (let i = 0; i < nT; i++) {
-    for (let j = 0; j < nR; j++) {
-      const A = i * cols + j, B = (i + 1) * cols + j, C = i * cols + j + 1, D = (i + 1) * cols + j + 1;
-      if (sx > 0) idx.push(A, B, C, B, D, C);
-      else idx.push(A, C, B, B, C, D);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  // Naht (u = 0 / u = 1) glätten
-  const nr = g.attributes.normal;
-  for (let i = 0; i < rows; i++) {
-    const A = i * cols, B = i * cols + nR;
-    _N.set(nr.getX(A) + nr.getX(B), nr.getY(A) + nr.getY(B), nr.getZ(A) + nr.getZ(B)).normalize();
-    nr.setXYZ(A, _N.x, _N.y, _N.z);
-    nr.setXYZ(B, _N.x, _N.y, _N.z);
-  }
-  return g;
-}
-const line = (a, b) => new THREE.LineCurve3(a, b);
-const spline = (pts) => new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-
-// ---------- Sammler für statische Geometrie ----------
-class Bucket {
-  constructor(frameScale = 1) { this.lists = new Map(); this.fs = frameScale; this.xf = null; }
-  put(key, g) { // übernimmt die Geometrie (ohne Kopie)
-    if (this.xf) g.applyMatrix4(this.xf);
-    if (!this.lists.has(key)) this.lists.set(key, []);
-    this.lists.get(key).push(g);
-  }
-  add(key, geo, matrix) {
-    const g = geo.clone();
-    if (matrix) g.applyMatrix4(matrix);
-    this.put(key, g);
-  }
-  // konisches Rohr von a nach b
-  tube(key, a, b, r1, r2 = r1, seg = 10) {
-    _dir.subVectors(b, a);
-    const len = _dir.length();
-    if (len < 1e-5) return;
-    _q.setFromUnitVectors(UP, _dir.divideScalar(len));
-    _m.compose(v3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2), _q, _one);
-    const k = key === 'frame' ? this.fs : 1;
-    const g = new THREE.CylinderGeometry(r2 * k, r1 * k, len, seg, 1);
-    g.applyMatrix4(_m);
-    this.put(key, g);
-  }
-  // wie tube(), aber seitlich abgeflacht (hydrogeformte Rahmenrohre in der Mittelebene)
-  tubeF(key, a, b, r1, r2 = r1, seg = 10, flat = 0.8) {
-    _dir.subVectors(b, a);
-    const len = _dir.length();
-    if (len < 1e-5) return;
-    _q.setFromUnitVectors(UP, _dir.divideScalar(len));
-    _m.compose(v3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2), _q, _one);
-    const k = key === 'frame' ? this.fs : 1;
-    const g = new THREE.CylinderGeometry(r2 * k, r1 * k, len, seg, 1);
-    g.applyMatrix4(_m);
-    const cx = (a.x + b.x) / 2;
-    g.translate(-cx, 0, 0); g.scale(flat, 1, 1); g.translate(cx, 0, 0);
-    this.put(key, g);
-  }
-  // Ellipsoid mit Halbachsen (rx, ry, rz), um die x-Achse gedreht
-  ell(key, p, rx, ry, rz, rotX = 0, seg = 12) {
-    _q.setFromAxisAngle(v3(1, 0, 0), rotX);
-    _m.compose(p, _q, v3(rx, ry, rz));
-    this.add(key, new THREE.SphereGeometry(1, seg, Math.max(6, seg - 4)), _m);
-  }
-  ball(key, p, r, sx = 1, sy = 1, sz = 1, seg = 12) {
-    _m.compose(p, _q.identity(), v3(sx, sy, sz));
-    this.add(key, new THREE.SphereGeometry(r, seg, Math.max(6, seg - 4)), _m);
-  }
-  box(key, p, w, h, d, rotX = 0) {
-    _q.setFromAxisAngle(v3(1, 0, 0), rotX);
-    _m.compose(p, _q, _one);
-    this.add(key, new THREE.BoxGeometry(w, h, d), _m);
-  }
-  curve(key, pts, r, seg = 24, radial = 8) {
-    const c = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    this.put(key, new THREE.TubeGeometry(c, seg, r, radial, false));
-  }
-  flush(materials, group) {
-    for (const [key, list] of this.lists) {
-      const merged = mergeGeometries(list, false);
-      list.forEach((g) => g.dispose());
-      if (!merged) { console.warn('bikes: merge failed', key); continue; }
-      const mesh = new THREE.Mesh(merged, materials[key]);
-      mesh.castShadow = true;
-      group.add(mesh);
-    }
-  }
-}
-
-function canvasTex(w, h, draw, repeat = false) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-}
-
-const hex = (c) => '#' + c.toString(16).padStart(6, '0');
-const hash01 = (n) => { const x = Math.sin(n * 127.1 + 3.7) * 43758.5453; return x - Math.floor(x); };
 
 // ---------- Geometrie-Sätze je Rahmenstil ----------
 const FRAMES = {
@@ -278,9 +101,11 @@ const HEAD_P = [ // y (Kopf-lokal), halbe Breite, Ausdehnung nach vorn, nach hin
 
 export function createBike(def, opts = {}) {
   const low = opts.lod === 'low';
-  const F = FRAMES[def.look.frame] || FRAMES.mtb;
-  const PZ = POSES[def.look.frame] || POSES.mtb;
   const L = def.look;
+  const moto = !!def.moto; // Motorrad: Rahmen, Räder etc. aus motos.js, Fahrer von hier
+  const MG = moto ? MOTO_GEOM[L.moto] : null;
+  const F = moto ? { wb: MG.wb, bbY: 0.3, bbZ: 0, saddleY: MG.seat[0] + 0.02, saddleZ: MG.seat[1] } : FRAMES[L.frame] || FRAMES.mtb;
+  const PZ = moto ? MOTO_POSES[L.moto] : POSES[L.frame] || POSES.mtb;
   const col = def.colors;
   const r = L.wheelR;
   const group = new THREE.Group();
@@ -382,6 +207,11 @@ export function createBike(def, opts = {}) {
     tire: std(TIRE_WALL_COLORS[L.tireWall] ?? 0x111112, 0.9, 0),
     metal: std(0xc9ccd2, 0.28, 0.9),
     gold: std(L.fork === 'rigid' ? 0xc9ccd2 : 0xd4a537, 0.25, 0.9),
+    engine: std(0x3a3c42, 0.42, 0.75),
+    plastic: std(col.frame, 0.45, 0.05),
+    screen: std(0x2a3540, 0.05, 0.3, { transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }),
+    lightW: std(0xffffff, 0.15, 0.2, { emissive: 0xfff4d8, emissiveIntensity: 1.6 }),
+    lightR: std(0xc4141a, 0.3, 0.1, { emissive: 0xff2018, emissiveIntensity: 1.2 }),
     saddle: std(0x151515, 0.62, 0),
     skin: std(RD.skin, 0.58, 0),
     hair: std(RD.hair, 0.75, 0),
@@ -390,7 +220,7 @@ export function createBike(def, opts = {}) {
     glove: std(0x1c1c20, 0.75, 0),
     helmet: std(col.helmet, 0.3, 0.1, { side: THREE.DoubleSide }),
     glass: std(0x0b0d12, 0.08, 0.85, { side: THREE.DoubleSide }),
-    rimMat: std(col.rim ?? (L.rim > 0.04 ? 0x15161a : 0x9ea2aa), 0.35, 0.7, { side: THREE.DoubleSide }),
+    rimMat: std(col.rim ?? (moto ? (L.moto === 'dirt' || L.moto === 'enduro' ? 0x2a2b30 : 0x1b1c20) : L.rim > 0.04 ? 0x15161a : 0x9ea2aa), 0.35, 0.7, { side: THREE.DoubleSide }),
   };
 
   const B = new Bucket(L.tubes || 1);
@@ -400,8 +230,17 @@ export function createBike(def, opts = {}) {
   const seg = low ? 6 : 10;
   const mid = (a, b, t) => a.clone().lerp(b, t);
 
+  let grip, gripAxis, gripR, stemTop, tt0;
+  const levers = []; // Bremshebel-Positionen für Leitungen
+  const chainX = 0.055;
+  const RING = 0.095, COG = 0.048;
+  let MP = null;
+  if (moto) {
+    MP = buildMoto(B, def, mats, { low, group, numTex });
+    ({ grip, gripAxis, gripR } = MP);
+  } else {
   // ----- Rahmen -----
-  const tt0 = F.st.clone().add(v3(0, -0.015, -0.02));
+  tt0 = F.st.clone().add(v3(0, -0.015, -0.02));
   const ttR = L.frame === 'road' ? 0.017 : 0.022;
   if (big) {
     B.tubeF('frame', tt0, F.ht.clone().add(v3(0, -0.03, 0)), 0.03, 0.04, seg, 0.8); // Oberrohr
@@ -481,7 +320,7 @@ export function createBike(def, opts = {}) {
   }
 
   // ----- Cockpit -----
-  const stemTop = F.ht.clone().add(F.stem);
+  stemTop = F.ht.clone().add(F.stem);
   const htTop = F.ht.clone().add(v3(0, 0.02, 0));
   if (!low) for (let i = 0; i < 2; i++) B.tube('dark', htTop.clone().addScaledVector(hDir, i * 0.014), htTop.clone().addScaledVector(hDir, i * 0.014 + 0.011), 0.021, 0.021, 12); // Spacer
   const stemBase = htTop.clone().addScaledVector(hDir, low ? 0 : 0.028);
@@ -490,8 +329,6 @@ export function createBike(def, opts = {}) {
   B.ball('dark', stemTop, 0.026, 1.3, 0.9, 1, low ? 8 : 12); // Lenkerklemmung
   if (!low) B.tube('dark', stemBase.clone().addScaledVector(hDir, -0.012), stemBase.clone().addScaledVector(hDir, 0.022), 0.022, 0.022, 12); // Klemmung Gabelschaft
   // Griffpositionen (rechte Seite, x > 0) + Griff-Achse
-  let grip, gripAxis, gripR;
-  const levers = []; // Bremshebel-Positionen für Leitungen
   if (L.bars === 'drop') {
     gripR = 0.02;
     for (const sx of [-1, 1]) {
@@ -583,8 +420,6 @@ export function createBike(def, opts = {}) {
   }
 
   // ----- Antrieb (statische Teile) -----
-  const chainX = 0.055;
-  const RING = 0.095, COG = 0.048;
   if (!low) {
     // Schaltwerk: Leitrollen
     const J1 = R.clone().add(v3(chainX, -0.072, 0.03)), J2 = R.clone().add(v3(chainX, -0.148, -0.005));
@@ -655,6 +490,7 @@ export function createBike(def, opts = {}) {
     B.tube('dark', b, b.clone().addScaledVector(dd, 0.025), 0.03, 0.016, seg);
     B.tube('dark', a.clone().addScaledVector(dd, 0.02).addScaledVector(nrm, -0.01), a.clone().addScaledVector(dd, 0.06).addScaledVector(nrm, -0.01), 0.037, 0.037, seg + 2); // Halter
   }
+  } // Ende Fahrrad-Rahmen
 
   // =====================================================================================
   // ----- Fahrer (statisch): Rumpf, Arme, Hände, Kopf -----
@@ -711,7 +547,7 @@ export function createBike(def, opts = {}) {
     B.ell('dark', v3(0, -0.056, -0.093), 0.019, 0.0035, 0.006, 0, 6); // Mund
     for (const sx of [-1, 1]) {
       B.ell('skin', v3(sx * 0.073, -0.006, 0.012), 0.011, 0.029, 0.019, 0.15, 8); // Ohren
-      if (!RD.glasses || RD.helmetType === 'full') {
+      if (!RD.glasses || RD.helmetType === 'full' || RD.helmetType === 'moto') {
         B.ell('sock', v3(sx * 0.031, 0.013, -0.084), 0.012, 0.008, 0.006, 0, 8); // Augapfel
         B.ell('dark', v3(sx * 0.031, 0.013, -0.0895), 0.0055, 0.0055, 0.003, 0, 6); // Pupille
       }
@@ -754,7 +590,8 @@ export function createBike(def, opts = {}) {
       const visor = new THREE.RingGeometry(pv[0] * 0.97, pv[0] * 0.97 + 0.05, 12, 1, Math.PI / 2 - 0.7, 1.4).rotateX(-Math.PI / 2).scale(1, 1, (pv[1] + pv[2]) / pv[0]);
       B.add('helmet', visor, new THREE.Matrix4().compose(v3(0, 0.002, 0), new THREE.Quaternion().setFromAxisAngle(v3(1, 0, 0), -0.28), _one).premultiply(M)); // Schirm
     }
-  } else { // Fullface: Schale mit echter Gesichtsöffnung (vorn unten zurückversetzt), Kinnbügel, Goggle
+  } else { // Fullface (MTB/Motocross: Goggle + Schirm) bzw. Integralhelm (Motorrad: Visier)
+    const mx = ht === 'full';
     const FF = [ // y, halbe Breite, vorn, hinten
       [-0.14, 0.11, -0.005, 0.128], [-0.09, 0.121, 0.012, 0.14], [-0.03, 0.126, 0.026, 0.147], [0.015, 0.127, 0.05, 0.149], [0.042, 0.127, 0.128, 0.148],
       [0.08, 0.121, 0.128, 0.142], [0.11, 0.106, 0.11, 0.127], [0.138, 0.078, 0.078, 0.092], [0.156, 0.038, 0.038, 0.046], [0.163, 0.0, 0.0, 0.0],
@@ -772,23 +609,29 @@ export function createBike(def, opts = {}) {
       for (const x of [-0.022, 0, 0.022]) { _m.compose(v3(x, -0.1, -0.142), _q.setFromAxisAngle(v3(1, 0, 0), 0.25), v3(0.007, 0.018, 0.006)); B.add('dark', new THREE.SphereGeometry(1, 6, 4), _m.premultiply(M)); }
       vents(fn, M, -0.14, 0.163, [[-0.045, -0.02, 0.05, 0.3], [0, -0.03, 0.055, 0.3], [0.045, -0.02, 0.05, 0.3]]);
     }
+    if (!mx) { // Integralhelm: großes getöntes Visier über der Öffnung + Zierstreifen
+      const vis = new THREE.CylinderGeometry(0.131, 0.128, 0.08, low ? 10 : 22, 1, true, Math.PI - 1.2, 2.4);
+      B.add('glass', vis, new THREE.Matrix4().compose(v3(0, 0.02, 0.0), _q.identity(), v3(1, 1, 1.02)).premultiply(M));
+      if (!low) B.put('accent', shellGeo((y) => { const p = fn(y); return [Math.min(p[0] + 0.002, 0.025), p[1] + 0.002, p[2]]; }, 0.06, 0.163, M, 8));
+    }
     // Goggle: Band (Akzentfarbe) um die Schale + gebogene Scheibe in der Öffnung
-    B.put('accent', shellGeo((y) => { const p = fn(y); return [p[0] + 0.005, p[1] + 0.005, p[2]]; }, 0.004, 0.04, M, 2));
+    if (mx) B.put('accent', shellGeo((y) => { const p = fn(y); return [p[0] + 0.005, p[1] + 0.005, p[2]]; }, 0.004, 0.04, M, 2));
     const gog = new THREE.CylinderGeometry(0.112, 0.112, 0.048, low ? 10 : 20, 1, true, Math.PI - 1.15, 2.3);
-    B.add('glass', gog, new THREE.Matrix4().compose(v3(0, 0.02, -0.004), _q.identity(), v3(0.98, 1, 0.98)).premultiply(M));
-    if (!low) {
+    if (mx) B.add('glass', gog, new THREE.Matrix4().compose(v3(0, 0.02, -0.004), _q.identity(), v3(0.98, 1, 0.98)).premultiply(M));
+    if (!low && mx) {
       const gf = new THREE.TorusGeometry(0.112, 0.0055, 4, 24, 2.3).rotateX(-Math.PI / 2).rotateY(Math.PI / 2 - 1.15).scale(0.98, 1, 0.98);
       for (const y of [-0.004, 0.044]) B.add('dark', gf, new THREE.Matrix4().makeTranslation(0, y, -0.004).premultiply(M)); // Goggle-Rahmen
     }
     // Schirm: gebogener Ring-Ausschnitt über der Stirn
     const pv = fn(0.06);
     const visor = new THREE.RingGeometry(pv[0] * 0.95, pv[0] * 0.95 + 0.06, low ? 6 : 12, 1, Math.PI / 2 - 0.8, 1.6).rotateX(-Math.PI / 2).scale(1, 1, (pv[1] + pv[2]) / pv[0]);
-    B.add('helmet', visor, new THREE.Matrix4().compose(v3(0, 0.07, 0), new THREE.Quaternion().setFromAxisAngle(v3(1, 0, 0), 0.22), _one).premultiply(M));
+    if (mx) B.add('helmet', visor, new THREE.Matrix4().compose(v3(0, 0.07, 0), new THREE.Quaternion().setFromAxisAngle(v3(1, 0, 0), 0.22), _one).premultiply(M));
   }
-  if (!low && ht !== 'full') { // Kinnriemen
+  const fullFace = ht === 'full' || ht === 'moto';
+  if (!low && !fullFace) { // Kinnriemen
     for (const sx of [-1, 1]) B.curve('dark', [v3(sx * 0.082, -0.0, 0.0), v3(sx * 0.07, -0.07, -0.025), v3(sx * 0.03, -0.118, -0.06)], 0.004, 6, 4);
   }
-  if (RD.glasses && ht !== 'full' && !low) { // Sportbrille: gebogene Scheibe + Bügel
+  if (RD.glasses && !fullFace && !low) { // Sportbrille: gebogene Scheibe + Bügel
     const lens = new THREE.CylinderGeometry(0.1, 0.1, 0.052, 20, 1, true, Math.PI - 1.0, 2.0);
     B.add('glass', lens, new THREE.Matrix4().compose(v3(0, 0.018, -0.006), new THREE.Quaternion().setFromAxisAngle(v3(1, 0, 0), 0.08), v3(0.86, 1, 1.06)));
     B.ell('dark', v3(0, 0.038, -0.1), 0.07, 0.006, 0.012, 0, 8); // Rahmen oben
@@ -843,7 +686,7 @@ export function createBike(def, opts = {}) {
   }
 
   // ----- Dekor: Markenschriftzug -----
-  if (!low) {
+  if (!low && !moto) {
     const text = def.brandDef.name.toUpperCase();
     const textCol = col.accent === col.frame ? 0xffffff : col.accent;
     const decalMat = (label, fontCss) => new THREE.MeshStandardMaterial({
@@ -956,10 +799,14 @@ export function createBike(def, opts = {}) {
     WB.flush(mats, wg);
     return wg;
   }
-  const wf = makeWheel(false);
-  wf.position.copy(Fw);
-  const wr = makeWheel(true);
-  wr.position.copy(R);
+  let wf, wr;
+  if (moto) [wf, wr] = MP.wheels;
+  else {
+    wf = makeWheel(false);
+    wf.position.copy(Fw);
+    wr = makeWheel(true);
+    wr.position.copy(R);
+  }
   group.add(wf, wr);
 
   // ----- Kurbel (dreht mit) -----
@@ -967,8 +814,8 @@ export function createBike(def, opts = {}) {
   const crankG = new THREE.Group();
   crankG.position.copy(bb);
   const pedals = [];
-  const flatPedal = L.frame !== 'road';
-  {
+  const flatPedal = L.frame !== 'road'; // Motorrad: Stiefel mit dicker Sohle
+  if (!moto) {
     const CB = new Bucket();
     // Kettenblatt mit Zähnen
     if (low) CB.add('dark', new THREE.CylinderGeometry(RING - 0.004, RING - 0.004, 0.004, 16).rotateZ(Math.PI / 2), new THREE.Matrix4().makeTranslation(chainX, 0, 0));
@@ -1019,12 +866,13 @@ export function createBike(def, opts = {}) {
   // =====================================================================================
   // ----- Beine (animiert): EIN SkinnedMesh, je Bein Hüfte → Knie → Knöchel -----
   // =====================================================================================
-  const HX = 0.105;
+  const HX = moto ? 0.13 : 0.105; // Motorrad: Knie seitlich am Tank
   const legMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0 });
   const legParts = [];
   const cl = (h) => new THREE.Color(h);
   const cSkin = cl(RD.skin), cShorts = cl(col.shorts), cSock = cl(0xf2f2f2), cShoe = cl(col.shoes), cSole = cl(0x18181c), cDark = cl(0x1a1a1d), cAcc = cl(col.accent);
   const padded = def.cat === 'downhill';
+  const mxKit = moto && (L.moto === 'dirt' || L.moto === 'enduro');
   const ankleY = -(LT + LS);
   const soleBot = flatPedal ? 0.096 : 0.087; // Sohle unter dem Knöchel
   function finish(geo, c, side, mode) {
@@ -1056,7 +904,13 @@ export function createBike(def, opts = {}) {
     const lc = line(v3(x, 0.15, 0), v3(x, -1.0, 0));
     const lo = { s0: 0.15, ref: v3(0, 0, -1), nR: lnR };
     const piece = (a, b, n, c, extra = {}) => finish(loft(lc, extra.fn || legFn, { ...lo, a, b, nT: Math.max(2, Math.round(n * (low ? 0.45 : 1))), ...extra }), c, side, extra.mode);
-    if (roadKit) {
+    if (moto) { // lange Motorradhose (Leder bzw. MX) + hohe Stiefel
+      piece(-0.075, 0.64, 26, cShorts, { grow: mxKit ? 0.016 : 0.009, ends: 0.3 });
+      piece(0.6, 0.97, 12, cShoe, { grow: 0.017 });
+      if (!low) piece(0.7, 0.74, 2, cDark, { grow: 0.021 }); // Schnalle
+      const pad = (s) => { const p = legFn(s); const e = Math.sin(clamp((s - 0.36) / 0.24, 0, 1) * Math.PI); return [p[0] + 0.018 * e + 0.012, p[1] + 0.012 * e + 0.012, p[2] + 0.018 * e]; };
+      piece(0.37, 0.6, 8, mxKit ? cDark : cAcc, { fn: pad }); // Knieschoner bzw. Knieschleifer
+    } else if (roadKit) {
       piece(-0.075, 0.215, 12, cShorts, { grow: 0.003, ends: 0.5 });
       piece(0.215, 0.245, 2, cAcc, { grow: 0.0045 }); // Beinabschluss
       piece(0.235, 0.79, 30, cSkin);
@@ -1124,35 +978,41 @@ export function createBike(def, opts = {}) {
 
   const ankOff = v3(0, soleBot + 0.009, 0.115); // Knöchel relativ zur Pedalachse (Fuß-Bezug)
   function pose(crank) {
+    if (moto) { // Füße stehen auf den Fußrasten
+      for (const l of legs) placeLeg(l, MP.peg.y, MP.peg.z, -0.06);
+      return;
+    }
     crankG.rotation.x = -crank;
     pedals[0].rotation.x = crank;
     pedals[1].rotation.x = crank;
     for (const l of legs) {
       const a = crank + (l.sx > 0 ? 0 : Math.PI);
-      const py = bb.y + Math.cos(a) * CR, pz = bb.z - Math.sin(a) * CR;
-      const fp = -(0.17 + 0.11 * Math.sin(a - Math.PI / 2)); // Fußneigung (Spitze unten), "Ankle-Pedaling"
-      const c = Math.cos(fp), s = Math.sin(fp);
-      const ay = py + ankOff.y * c - ankOff.z * s, az = pz + ankOff.y * s + ankOff.z * c;
-      const hy = hipC.y, hz = hipC.z;
-      const dy = ay - hy, dz = az - hz;
-      const D = clamp(Math.hypot(dy, dz), Math.abs(LT - LS) + 1e-3, LT + LS - 1e-3);
-      const uy = dy / (Math.hypot(dy, dz) || 1), uz = dz / (Math.hypot(dy, dz) || 1);
-      const cb = clamp((LT * LT + D * D - LS * LS) / (2 * LT * D), -1, 1), sb = Math.sqrt(1 - cb * cb);
-      // Knie nach vorn (−z)
-      const ty = uy * cb - uz * sb, tz = uz * cb + uy * sb;
-      const ky = hy + ty * LT, kz = hz + tz * LT;
-      const th1 = Math.atan2(-tz, -ty);
-      const th2 = Math.atan2(-(az - kz), -(ay - ky));
-      l.hip.position.set(l.sx * HX, hy, hz);
-      l.hip.rotation.x = th1;
-      l.knee.rotation.x = th2 - th1;
-      l.ankle.rotation.x = fp - th2;
+      placeLeg(l, bb.y + Math.cos(a) * CR, bb.z - Math.sin(a) * CR, -(0.17 + 0.11 * Math.sin(a - Math.PI / 2))); // Fußneigung (Spitze unten), "Ankle-Pedaling"
     }
+  }
+  // Bein-IK: Fußballen auf (py, pz), Fußneigung fp
+  function placeLeg(l, py, pz, fp) {
+    const c = Math.cos(fp), s = Math.sin(fp);
+    const ay = py + ankOff.y * c - ankOff.z * s, az = pz + ankOff.y * s + ankOff.z * c;
+    const hy = hipC.y, hz = hipC.z;
+    const dy = ay - hy, dz = az - hz;
+    const D = clamp(Math.hypot(dy, dz), Math.abs(LT - LS) + 1e-3, LT + LS - 1e-3);
+    const uy = dy / (Math.hypot(dy, dz) || 1), uz = dz / (Math.hypot(dy, dz) || 1);
+    const cb = clamp((LT * LT + D * D - LS * LS) / (2 * LT * D), -1, 1), sb = Math.sqrt(1 - cb * cb);
+    // Knie nach vorn (−z)
+    const ty = uy * cb - uz * sb, tz = uz * cb + uy * sb;
+    const ky = hy + ty * LT, kz = hz + tz * LT;
+    const th1 = Math.atan2(-tz, -ty);
+    const th2 = Math.atan2(-(az - kz), -(ay - ky));
+    l.hip.position.set(l.sx * HX, hy, hz);
+    l.hip.rotation.x = th1;
+    l.knee.rotation.x = th2 - th1;
+    l.ankle.rotation.x = fp - th2;
   }
   pose(0);
 
   // Startnummer am Lenker (von hinten lesbar)
-  if (numTex) {
+  if (numTex && !moto) {
     const pl = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.11), new THREE.MeshStandardMaterial({ map: numTex, transparent: true, roughness: 0.7 }));
     pl.position.copy(stemTop).add(v3(0, L.bars === 'drop' ? 0.05 : 0.075, -0.045));
     pl.rotation.x = -0.35;
@@ -1166,6 +1026,6 @@ export function createBike(def, opts = {}) {
     wheels: [wf, wr],
     wheelR: r,
     pose,
-    spin(dist) { wf.rotation.x = wr.rotation.x = -dist / r; },
+    spin(dist) { wf.rotation.x = -dist / r; wr.rotation.x = -dist / (MP ? MP.wheelRR : r); },
   };
 }
