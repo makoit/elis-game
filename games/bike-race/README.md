@@ -83,6 +83,8 @@ js/sfx.js, js/music.js        Geräusche, Motorklang, Publikum-Jubel, Hintergrun
 js/autopilot.js               Referenzzeit für die Sterne
 tools/sim.mjs                 `npm run sim [easy|medium|hard|pro]`: Testfahrten aller Typ/Strecken-Kombis
 tools/bikeview.html           Entwickler-Ansicht des Radmodells
+tools/icons.py                `python3 games/bike-race/tools/icons.py`: erzeugt icons/icon.svg, icons/icon-maskable.svg und cover.svg
+                              (PNGs in icons/ danach aus den SVGs exportieren, 192/512 px)
 ```
 
 ## Anpassen
