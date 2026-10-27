@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="UTF-8"><title>Modell-Ansicht</title>
+<style>html,body{margin:0;background:#888;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"../../../vendor/three.module.js","three/addons/":"../../../vendor/addons/"}}</script>
+</head><body>
+<script type="module">
+// Entwickler-Ansicht: ?m=angler_m|angler_w zeigt ein Modell von vorn und hinten (für Screenshots)
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+const qs = new URLSearchParams(location.search);
+const r = new THREE.WebGLRenderer({ antialias: true });
+r.setSize(innerWidth, innerHeight); r.toneMapping = THREE.ACESFilmicToneMapping; r.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x8899aa);
+const pm = new THREE.PMREMGenerator(r);
+new RGBELoader().load('../assets/sky/noon.hdr', (t) => { t.mapping = THREE.EquirectangularReflectionMapping; scene.environment = pm.fromEquirectangular(t).texture; });
+const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(2, 4, 3); scene.add(sun);
+const cam = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.05, 50); cam.position.set(0, 1.0, 5.2); cam.lookAt(0, 0.95, 0);
+new GLTFLoader().load(`../assets/models/${qs.get('m') || 'angler_m'}.glb`, (g) => {
+  const a = g.scene;
+  for (const n of (qs.get('hide') || '').split(',')) { const o = a.getObjectByName(n); if (o) o.visible = false; }
+  a.rotation.y = +(qs.get('rot') || 0);
+  scene.add(a);
+  if (qs.has('close')) { cam.position.set(0, 1.6, 1.6); cam.lookAt(0, 1.55, 0); }
+  if (qs.has('fit')) {
+    const box = new THREE.Box3().setFromObject(a); const c = box.getCenter(new THREE.Vector3()); const sz = box.getSize(new THREE.Vector3()).length();
+    cam.position.set(c.x + sz * 0.6, c.y + sz * 0.35, c.z + sz * 0.8); cam.lookAt(c); cam.near = sz / 100; cam.far = sz * 10; cam.updateProjectionMatrix();
+    console.log('SIZE ' + box.getSize(new THREE.Vector3()).toArray().map((v) => v.toFixed(2)).join(' x '));
+  }
+  const bones = []; a.traverse((o) => { if (o.isBone && /Hips|Spine2|Head$|RightArm|RightForeArm|RightHand$|RightShoulder/.test(o.name)) { const p = new THREE.Vector3(); o.getWorldPosition(p); bones.push(o.name + ' ' + p.toArray().map((v) => v.toFixed(3)).join(',') + ' q ' + o.quaternion.toArray().map((v) => v.toFixed(2)).join(',')); } });
+  console.log('BONES ' + bones.join(' | '));
+  console.log('MESHES', a.getObjectsByProperty('isMesh', true).map((m) => m.name + ':' + m.material.name).join(', '));
+});
+(function loop() { r.render(scene, cam); requestAnimationFrame(loop); })();
+</script></body></html>

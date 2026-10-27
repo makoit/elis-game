@@ -89,6 +89,7 @@
         </div>
         <div class="hud-right">
           <div class="chip coins-chip" id="hud-coins">🪙 0</div>
+          <button id="btn-help" class="icon-btn" aria-label="Anleitung">❓</button>
           <button id="btn-book2" class="icon-btn" aria-label="Fangbuch">📖</button>
           <button id="btn-mute" class="icon-btn" aria-label="Ton">🔊</button>
           <button id="btn-pause" class="icon-btn" aria-label="Pause">⏸</button>
@@ -96,9 +97,21 @@
       </div>
       <ol id="hud-rank" class="hud-rank hidden"></ol>
       <canvas id="sonar" class="sonar hidden" width="220" height="120"></canvas>
-      <div id="hint" class="hint-box"></div>
+      <!-- Schritt-Leiste: zeigt immer, was gerade zu tun ist -->
+      <div id="coach">
+        <ol id="coach-steps">
+          <li data-step="aim"><i>🎯</i><span>Zielen</span></li>
+          <li data-step="cast"><i>🎣</i><span>Auswerfen</span></li>
+          <li data-step="wait"><i>⏳</i><span>Warten</span></li>
+          <li data-step="strike"><i>❗</i><span>Anschlagen</span></li>
+          <li data-step="fight"><i>💪</i><span>Drillen</span></li>
+          <li data-step="land"><i>🥅</i><span>Keschern</span></li>
+        </ol>
+        <p id="coach-text"></p>
+      </div>
+      <div id="hint" class="hint-box hidden"></div>
       <div id="banner"></div>
-      <div id="power" class="power hidden"><i id="power-fill"></i><span class="sweet"></span><b>KRAFT</b></div>
+      <div id="power" class="power hidden"><i id="power-fill"></i><b id="power-text">WURFWEITE</b></div>
       <div id="fight" class="fight hidden">
         <div class="meter tension"><span>Spannung</span><div class="bar"><i id="fight-tension"></i><em class="red"></em></div></div>
         <div class="meter stamina"><span>Kraft des Fisches</span><div class="bar"><i id="fight-stamina"></i></div></div>
@@ -148,6 +161,23 @@
       </div>
     </section>
 
+    <!-- Anleitung -->
+    <section id="screen-help" class="screen overlay">
+      <div class="dialog wide scroll">
+        <h2>So wird geangelt</h2>
+        <ol class="guide">
+          <li><i>🎯</i><div><b>Zielen</b><p>Mit <kbd>◀</kbd> <kbd>▶</kbd> (oder über das Bild wischen) drehst du dich. Der gelbe Ring auf dem Wasser zeigt, wo der Köder landet.</p></div></li>
+          <li><i>🎣</i><div><b>Auswerfen</b><p>Den großen runden Knopf <b>gedrückt halten</b>: Der Ring wandert weiter hinaus. <b>Loslassen</b> = Wurf. Kurz halten = nah, lang halten = weit.</p></div></li>
+          <li><i>⏳</i><div><b>Warten</b><p>Jetzt Geduld! Die Pose wackelt erst ein bisschen (Zupfen) – dann noch <b>nicht</b> drücken. Beim Spinnfischen hältst du den Knopf, um den Köder einzuholen.</p></div></li>
+          <li><i>❗</i><div><b>Anschlagen</b><p>Taucht die Pose ganz ab, ruckt die Rute oder bimmelt das Glöckchen, wird der Knopf <b>rot</b>: <b>sofort tippen!</b></p></div></li>
+          <li><i>💪</i><div><b>Drillen</b><p>Knopf <b>halten = kurbeln</b>, der Fisch kommt näher. Wird der Knopf <b>rot („LOSLASSEN“)</b>, sofort loslassen – sonst reißt die Schnur. Zeigt ein Pfeil blinkend nach links oder rechts, halte diese Richtung gedrückt, dann wird der Fisch schneller müde.</p></div></li>
+          <li><i>🥅</i><div><b>Keschern</b><p>Ist der Fisch nah genug, kommt er automatisch in den Kescher. Dann: behalten oder zurücksetzen.</p></div></li>
+        </ol>
+        <p class="muted small">Tipp: Welcher Köder zu welchem Fisch passt, steht im Fangbuch 📖 und unter „Ausrüstung“.</p>
+        <button id="btn-help-close" class="btn primary">Los geht's!</button>
+      </div>
+    </section>
+
     <!-- Fangbuch -->
     <section id="screen-book" class="screen overlay">
       <div class="dialog wide scroll">
@@ -193,6 +223,7 @@
       </div>
     </section>
 
+    <div id="loading" class="hidden"><div class="spinner"></div><b id="loading-text">Lade …</b></div>
     <div id="toast"></div>
   </div>
   <script type="module" src="./js/main.js"></script>

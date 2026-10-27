@@ -18,16 +18,17 @@ export class Fishing {
     this.state = 'ready';
     this.aimYaw = 0;
     this.power = 0;
-    this.powerDir = 1;
     this.lurePos = new THREE.Vector3();
     this.target = new THREE.Vector3();
     this.hint = TECHNIQUES[opts.rod.tech].hint;
     this.fishMesh = null;
-    this.tangle = 0;
     this.setTarget(0.5);
   }
 
   emit(type, data) { this.o.onEvent?.(type, data); }
+
+  // Köder relativ zum Standplatz (nur waagerecht)
+  rel() { return new THREE.Vector3(this.lurePos.x - this.s.base.x, 0, this.lurePos.z - this.s.base.z); }
 
   get tech() { return this.o.rod.tech; }
 
@@ -39,7 +40,9 @@ export class Fishing {
   setTarget(power) {
     const range = this.o.rod.range * (this.s.riverWidth ? Math.min(1, (this.s.riverWidth * 0.85) / this.o.rod.range) : 1);
     const d = 6 + (range - 6) * power;
-    this.target.set(Math.sin(this.aimYaw) * d, 0, Math.cos(this.aimYaw) * d + (this.s.boat ? 0 : 2));
+    const b = this.s.base;
+    this.target.set(b.x + Math.sin(this.aimYaw) * d, 0, b.z + Math.cos(this.aimYaw) * d);
+    this.castDist = d;
     return d;
   }
 
@@ -73,33 +76,31 @@ export class Fishing {
     const s = this.s;
     const ud = s.angler.userData;
     const st = this.state;
+    ud.rig.reeling = false;
+    ud.rig.lookAt = st === 'ready' ? this.target : st === 'fight' ? s.shadowFish.position : this.lurePos;
 
     if (st === 'ready') {
       const turn = (input.right ? -1 : 0) + (input.left ? 1 : 0);
       this.aimYaw = Math.max(-0.8, Math.min(0.8, this.aimYaw + turn * dt * 0.9 + input.aimDelta));
       input.aimDelta = 0;
-      if (this.tangle > 0) {
-        this.tangle -= dt;
-        if (this.tangle <= 0) this.emit('msg', { text: 'Schnur entwirrt – weiter geht\'s!', kind: 'info' });
-      } else if (input.action) {
-        this.power += this.powerDir * dt * 0.85;
-        if (this.power > 1) { this.power = 1; this.powerDir = -1; }
-        if (this.power < 0) { this.power = 0; this.powerDir = 1; }
-        poseCast(s.angler, -Math.min(1, this.power * 1.4));
+      // Auswerfen: halten = Rute nach hinten, je länger desto weiter (Zielring wandert mit); loslassen = Wurf
+      if (input.action) {
+        if (!this.charging) this.power = 0.08;
+        this.power = Math.min(1, this.power + dt / 1.3);
+        poseCast(s.angler, -Math.min(1, 0.4 + this.power));
         this.charging = true;
       } else if (this.charging) {
         this.charging = false;
         this.cast();
       } else {
-        this.power = 0; this.powerDir = 1;
         poseCast(s.angler, 0);
       }
-      const d = this.setTarget(this.charging ? this.power : 0.5);
+      const d = this.setTarget(this.charging ? this.power : this.lastPower ?? 0.5);
       s.aim.visible = true;
       s.aim.position.set(this.target.x, 0.06, this.target.z);
       const sc = 0.6 + d * 0.03;
       s.aim.scale.set(sc, sc, sc);
-      s.aim.material.color.set(this.charging && this.power > 0.94 ? 0xff3a1a : 0xffd23a);
+      s.aim.material.opacity = this.charging ? 1 : 0.7;
       s.camTarget.lerp(this.target, 1 - Math.exp(-dt * 4));
       s.angler.rotation.y = this.aimYaw * 0.8;
       s.setLine(s.tipWorld().add(new THREE.Vector3(0, -0.6, 0)), 0, true);
@@ -115,7 +116,7 @@ export class Fishing {
       poseCast(s.angler, Math.min(1, u * 4) * (1 - u));
       const a = this.flyFrom;
       const b = this.target;
-      this.lurePos.set(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u + Math.sin(u * Math.PI) * (4 + b.length() * 0.15), a.z + (b.z - a.z) * u);
+      this.lurePos.set(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u + Math.sin(u * Math.PI) * (4 + this.castDist * 0.15), a.z + (b.z - a.z) * u);
       this.showLure(true);
       s.setLine(this.lurePos, 0.05);
       if (u >= 1) {
@@ -124,7 +125,7 @@ export class Fishing {
         this.state = 'waiting';
         this.waitT = 0;
         this.nothingTimer = 0;
-        this.distFactor = s.boat ? 1 : 0.7 + 0.5 * Math.min(1, b.length() / (this.o.rod.range * 0.8));
+        this.distFactor = s.boat ? 1 : 0.7 + 0.5 * Math.min(1, this.castDist / (this.o.rod.range * 0.8));
         this.planBite();
         this.emit('state', { state: 'waiting' });
       }
@@ -141,27 +142,27 @@ export class Fishing {
       if (this.tech === 'spinn') {
         moving = input.action;
         if (moving) {
-          const toShore = this.lurePos.clone().setY(0).normalize();
+          const toShore = this.rel().normalize();
           const sp = 3.2 * dt;
           this.lurePos.x -= toShore.x * sp; this.lurePos.z -= toShore.z * sp;
-          ud.rod.userData.crank.rotation.x += dt * 14;
+          ud.rig.reeling = true;
           sfx.reelTick(dt);
         }
         this.lurePos.y = -0.3 - this.depthIdx() * 0.6;
-        if (this.lurePos.length() < 3.5) { this.reelIn(); return; }
+        if (this.rel().length() < 3.5) { this.reelIn(); return; }
       } else if (this.tech === 'fliege') {
         this.lurePos.x -= drift * dt * 0.8;
         this.lurePos.y = this.depthIdx() === 0 ? 0.02 : -0.3;
-        if (input.action && st === 'waiting') { const d = this.lurePos.clone().setY(0).normalize(); this.lurePos.x -= d.x * 2.5 * dt; this.lurePos.z -= d.z * 2.5 * dt; }
-        if (this.lurePos.length() < 3.5 || Math.abs(this.lurePos.x) > 30) { this.reelIn(); return; }
+        if (input.action && st === 'waiting') { const d = this.rel().normalize(); this.lurePos.x -= d.x * 2.5 * dt; this.lurePos.z -= d.z * 2.5 * dt; }
+        if (this.rel().length() < 3.5 || Math.abs(this.lurePos.x - this.s.base.x) > 30) { this.reelIn(); return; }
       } else {
         this.lurePos.x -= drift * dt * 0.15;
         this.lurePos.y = this.tech === 'pose' ? 0 : -1;
         if (input.action && st === 'waiting' && this.tech === 'pose' && this.waitT > 0.5) {
           // Bei der Pose bedeutet Taste drücken ohne Biss: einholen
           this.holdIn = (this.holdIn || 0) + dt;
-          if (this.holdIn > 0.5) { const d = this.lurePos.clone().setY(0).normalize(); this.lurePos.x -= d.x * 4 * dt; this.lurePos.z -= d.z * 4 * dt; }
-          if (this.lurePos.length() < 3.5) { this.reelIn(); return; }
+          if (this.holdIn > 0.5) { const d = this.rel().normalize(); this.lurePos.x -= d.x * 4 * dt; this.lurePos.z -= d.z * 4 * dt; }
+          if (this.rel().length() < 3.5) { this.reelIn(); return; }
         } else this.holdIn = 0;
       }
 
@@ -241,8 +242,8 @@ export class Fishing {
       this.landT += dt;
       const f = this.fishMesh;
       const u = Math.min(1, this.landT / 1.1);
-      const tip = s.tipWorld();
-      f.position.lerpVectors(this.landFrom, new THREE.Vector3(tip.x * 0.5, 1.2, tip.z * 0.5 + 0.8), u);
+      const near = s.anglerWorld().add(new THREE.Vector3(Math.sin(s.angler.rotation.y) * 1.2, 0.6, Math.cos(s.angler.rotation.y) * 1.2));
+      f.position.lerpVectors(this.landFrom, near, u);
       f.rotation.z = Math.sin(s.t * 12) * 0.3 * (1 - u) + 0.4;
       animateFish(f, s.t, 2);
       s.setLine(f.position, 0);
@@ -250,6 +251,9 @@ export class Fishing {
       if (u >= 1) {
         this.state = 'caught';
         s.camMode = 'catch';
+        // Fangfoto: Angler hält den Fisch mit beiden Händen
+        f.rotation.set(0, 0, 0);
+        ud.rig.fishHold = { fish: f, length: this.hooked.cm / 100 };
         sfx.catchJingle();
         this.emit('caught', { ...this.hooked });
       }
@@ -257,17 +261,7 @@ export class Fishing {
     }
 
     if (st === 'caught') {
-      const f = this.fishMesh;
-      if (f) {
-        // Angler dreht sich zur Kamera und hält den Fisch vor die Brust
-        const base = s.boat ? s.boat.position : new THREE.Vector3(0, 0.82, 0);
-        f.visible = true;
-        s.angler.rotation.y += (0.9 - s.angler.rotation.y) * (1 - Math.exp(-dt * 4));
-        f.position.lerp(new THREE.Vector3(base.x + 0.75, base.y + 1.2, base.z + 0.85), 1 - Math.exp(-dt * 5));
-        s.angler.userData.rod.rotation.x += (1.2 - s.angler.userData.rod.rotation.x) * (1 - Math.exp(-dt * 4)); // Rute weg vom Fisch
-        f.rotation.set(0, Math.PI / 2 + Math.sin(s.t * 0.8) * 0.4, Math.sin(s.t * 6) * 0.1);
-        animateFish(f, s.t, 0.6);
-      }
+      if (this.fishMesh) animateFish(this.fishMesh, s.t, 0.5);
       s.line.visible = false;
     }
   }
@@ -276,22 +270,16 @@ export class Fishing {
     this.s.float.visible = floatVisible && this.tech === 'pose';
     this.s.lure.visible = !this.s.float.visible || this.state === 'flying';
     this.s.lure.position.copy(this.lurePos);
-    this.s.lure.material.color.set(this.o.bait.color);
   }
 
   cast() {
     const s = this.s;
-    if (this.power > 0.95 && !this.o.easy) {
-      this.tangle = 2.5;
-      this.emit('msg', { text: '🌀 Perücke! Zu viel Kraft – die Schnur hat sich verheddert.', kind: 'warn' });
-      sfx.miss();
-      poseCast(s.angler, 0);
-      return;
-    }
+    this.lastPower = this.power;
     this.setTarget(Math.min(1, this.power));
     this.flyFrom = s.tipWorld();
+    s.setLure(this.o.bait);
     this.flyT = 0;
-    this.flyDur = 0.6 + this.target.length() * 0.012;
+    this.flyDur = 0.6 + this.castDist * 0.012;
     this.state = 'flying';
     this.saidNothing = false;
     sfx.cast();
@@ -317,8 +305,9 @@ export class Fishing {
     // Kraft (in kg Zug) – große Fische ziehen kräftig, aber nicht linear
     this.fishForce = (0.35 * Math.pow(kg, 0.85) + 0.25) * f.power;
     this.stamina = 1;
-    this.dist = this.lurePos.clone().setY(0).length();
-    this.fishAng = Math.atan2(this.lurePos.x, this.lurePos.z);
+    const rel = this.rel();
+    this.dist = rel.length();
+    this.fishAng = Math.atan2(rel.x, rel.z);
     this.tension = 0.3;
     this.redT = 0;
     this.slackT = 0;
@@ -404,9 +393,9 @@ export class Fishing {
     }
 
     // Position des Fisches
-    const base = s.boat ? s.boat.position : new THREE.Vector3(0, 0, 0);
+    const base = s.anglerWorld();
     const fx = base.x + Math.sin(this.fishAng) * this.dist;
-    const fz = base.z + Math.cos(this.fishAng) * this.dist + (s.boat ? 0 : 1.5);
+    const fz = base.z + Math.cos(this.fishAng) * this.dist;
     s.shadowFish.position.set(fx, 0.04, fz);
     s.shadowFish.rotation.z = this.fishAng + Math.sin(s.t * 3) * 0.3;
     if (Math.random() < dt * (this.run > 0 ? 6 : 1.5)) s.ripple(fx, fz, this.run > 0 ? 0.6 : 0.25);
@@ -429,7 +418,7 @@ export class Fishing {
     s.setLine(fishPos, 0.02);
     s.camTarget.lerp(fishPos.clone().setY(0), 1 - Math.exp(-dt * 3));
     bendRod(ud.rod, 0.25 + this.tension * 0.9, Math.sin(this.fishAng));
-    if (reeling) ud.rod.userData.crank.rotation.x += dt * 16;
+    ud.rig.reeling = reeling;
     if (reeling) sfx.reelTick(dt);
     s.angler.rotation.y = this.fishAng * 0.6 + playerSide * 0.25;
 
@@ -478,9 +467,11 @@ export class Fishing {
   // Nach dem Fang: Fisch weg (behalten oder zurücksetzen)
   finishCatch(release) {
     const s = this.s;
+    s.angler.userData.rig.fishHold = null;
     if (release && this.fishMesh) {
-      const p = this.fishMesh.position;
-      s.splashAt(p.x, p.z + 1.5, 20, 0.6);
+      const p = s.anglerWorld();
+      const yaw = s.angler.rotation.y;
+      s.splashAt(p.x + Math.sin(yaw) * 2.5, p.z + Math.cos(yaw) * 2.5, 20, 0.6);
       sfx.splash();
     }
     this.cleanupFish();

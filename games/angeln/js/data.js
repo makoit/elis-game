@@ -40,7 +40,7 @@ export const FISH = {
     name: 'Scholle', latin: 'Pleuronectes platessa', w: [0.2, 0.6, 3.5], lenK: 44, depth: [2], power: 0.7, min: 25, price: 10,
     baits: { wattwurm: 1, wurm: 0.5 }, time: [1.1, 1.0, 1.1, 0.8],
     info: 'Plattfisch mit orangen Punkten. Beide Augen sitzen auf einer Seite – sie liegt flach auf dem Meeresgrund.',
-    look: { body: 0x8a7458, back: 0x6b5638, belly: 0xf3efe6, spots: 0xff7a1f, fin: 0x7a6448, shape: 'flat' },
+    look: { body: 0x9a8262, back: 0x7f6848, belly: 0xf3efe6, spots: 0xe0661c, fin: 0x8a7458, shape: 'flat' },
   },
   forelle: {
     name: 'Forelle', latin: 'Salmo trutta', w: [0.3, 1, 15], lenK: 43, depth: [0, 1], power: 1.05, jumps: true, min: 30, price: 12,
@@ -162,26 +162,25 @@ export const TIMES = [
 ];
 
 // ---- Angler-Look ----
-export const SKIN_TONES = [0xf6d3b6, 0xe8b48f, 0xc98a5e, 0x9a6440, 0x6a4128];
+// Hautton: Farbe der (entsättigten) Hauttextur des Modells
+export const SKIN_TONES = [0xf3c6a6, 0xe0a882, 0xbd8058, 0x8e5a3a, 0x5a3624];
 export const HAIR_COLORS = [0x2a1a10, 0x5a3418, 0xa8642a, 0xe8c26a, 0xc8401a, 0x9a9aa0];
-export const HAIR_STYLES = [
-  { id: 'short', name: 'Kurz' }, { id: 'long', name: 'Lang' }, { id: 'pony', name: 'Zopf' }, { id: 'curly', name: 'Locken' }, { id: 'bald', name: 'Glatze' },
-];
+export const HAIR_STYLES = [{ id: 'short', name: 'Kurzhaar' }, { id: 'bald', name: 'Glatze' }];
 export const HATS = [
-  { id: 'none', name: 'Ohne' }, { id: 'cap', name: 'Basecap' }, { id: 'bucket', name: 'Fischerhut' },
-  { id: 'beanie', name: 'Mütze' }, { id: 'straw', name: 'Strohhut' }, { id: 'captain', name: 'Kapitänsmütze' },
+  { id: 'none', name: 'Ohne' }, { id: 'bucket', name: 'Fischerhut' }, { id: 'cap', name: 'Basecap' },
+  { id: 'beanie', name: 'Mütze' },
 ];
 export const TOPS = [
-  { id: 'vest', name: 'Anglerweste' }, { id: 'rain', name: 'Regenjacke' }, { id: 'hoodie', name: 'Hoodie' },
-  { id: 'shirt', name: 'T-Shirt' }, { id: 'flannel', name: 'Holzfällerhemd' },
+  { id: 'rain', name: 'Regenjacke' }, { id: 'vest', name: 'Anglerweste' }, { id: 'softshell', name: 'Softshell' },
+  { id: 'hoodie', name: 'Hoodie' }, { id: 'fleece', name: 'Fleece' }, { id: 'tshirt', name: 'T-Shirt' },
 ];
 export const PANTS = [
-  { id: 'wader', name: 'Wathose' }, { id: 'jeans', name: 'Jeans' }, { id: 'cargo', name: 'Cargohose' }, { id: 'shorts', name: 'Shorts' },
+  { id: 'wader', name: 'Wathose' }, { id: 'jeans', name: 'Jeans' }, { id: 'cargo', name: 'Cargohose' },
 ];
-export const OUTFIT_COLORS = [0x3d5a2a, 0x2a4f9a, 0xe8501a, 0xffc61a, 0xd9264a, 0x1a8a8a, 0x8a3ac4, 0x2a2e36, 0xf0f0f0, 0x7a5a3a];
+export const OUTFIT_COLORS = [0x3d5a2a, 0x2a4f9a, 0xe8501a, 0xffc61a, 0xb8262a, 0x1a7a7a, 0x5a3a8a, 0x2a2e36, 0xd8d0b8, 0x7a5a3a];
 export const DEFAULT_LOOK = {
-  skin: 1, hair: 'short', hairColor: 1, hat: 'bucket', hatColor: 0, top: 'vest', topColor: 0, shirtColor: 8,
-  pants: 'wader', pantsColor: 7, glasses: false, beard: false,
+  skin: 1, hair: 'short', hairColor: 1, hat: 'bucket', hatColor: 8, top: 'vest', topColor: 0, shirtColor: 7,
+  pants: 'cargo', pantsColor: 9, glasses: true, beard: false, boots: true,
 };
 
 // ---- Gewicht, Länge, Bisswahrscheinlichkeit ----

@@ -6,12 +6,14 @@ import {
 import { WATERS, waterById, spotById, whereIs } from './spots.js';
 import { drawWaterMap, hitSpot } from './worldmap.js';
 import { FishingScene, Showcase } from './scene.js';
-import { createAngler } from './angler.js';
+import { createAngler, preloadAngler } from './angler.js';
 import { createFish } from './fishmodel.js';
 import { Fishing } from './fishing.js';
 import { sfx } from './sfx.js';
 
 const $ = (id) => document.getElementById(id);
+// Ladefehler (z. B. fehlende Textur) mit Dateinamen melden statt nur „Event“
+addEventListener('unhandledrejection', (e) => console.error('Ladefehler:', e.reason?.target?.src || e.reason?.target?.currentSrc || e.reason?.message || e.reason));
 const hexCss = (c) => '#' + c.toString(16).padStart(6, '0');
 const qs = new URLSearchParams(location.search);
 const isTouch = qs.has('touch') || matchMedia('(pointer: coarse)').matches;
@@ -64,6 +66,8 @@ function applyQuality() {
 applyQuality();
 
 const showcase = new Showcase(renderer);
+// für Tests in der Konsole
+window.angeln = { get world() { return world; }, get fishing() { return fishing; }, state };
 const world = new FishingScene(renderer);
 let fishing = null;
 let view = 'showcase'; // showcase | world
@@ -71,7 +75,7 @@ let paused = false;
 let tour = null; // Turnier-Zustand
 
 // ---- Screens ----
-const SCREENS = ['screen-mode', 'screen-garage', 'screen-map', 'screen-gear', 'screen-catch', 'screen-book', 'screen-settings', 'screen-pause', 'screen-result'];
+const SCREENS = ['screen-mode', 'screen-garage', 'screen-map', 'screen-gear', 'screen-catch', 'screen-book', 'screen-settings', 'screen-pause', 'screen-result', 'screen-help'];
 function show(...ids) { SCREENS.forEach((id) => $(id).classList.toggle('active', ids.includes(id))); }
 function overlay(id, on) { $(id).classList.toggle('active', on); }
 function inGame(v) {
@@ -362,7 +366,15 @@ $('btn-go').onclick = () => { sfx.unlock(); sfx.click(); startFishing(); };
 const input = { action: false, actionPressed: false, left: false, right: false, aimDelta: 0 };
 let actionWas = false;
 
-function startFishing() {
+function loading(text) {
+  $('loading').classList.toggle('hidden', !text);
+  if (text) $('loading-text').textContent = text;
+}
+
+let building = false;
+async function startFishing() {
+  if (building) return;
+  building = true;
   const w = waterById(state.water);
   const s = spotById(w, state.spot);
   let rod = rodById(state.rod);
@@ -370,12 +382,19 @@ function startFishing() {
   let bait = baitById(state.bait);
   if (!baitFitsRod(bait, rod) || !ownsBait(bait.id)) bait = BAITS.find((b) => baitFitsRod(b, rod) && ownsBait(b.id)) || BAITS[0];
   state.rod = rod.id; state.bait = bait.id;
-  world.build(w, s, state.look, rod.id, state.time);
+  show();
+  loading(`${w.name}: ${s.name} …`);
+  world.quality = quality();
+  try {
+    await world.build(w, s, state.look, rod.id, state.time, (t) => t && loading(`${s.name}: ${t}`));
+  } finally {
+    building = false;
+    loading('');
+  }
   world.resize();
   fishing = new Fishing(world, {
     water: w, spot: s, rod, bait, depth: state.depth, time: state.time, drag: state.drag, easy: state.easy, onEvent: onFishEvent,
   });
-  show();
   inGame(true);
   paused = false;
   $('hud-water').textContent = w.name.toUpperCase();
@@ -385,10 +404,10 @@ function startFishing() {
   updateCoins();
   setAction('ready');
   sfx.ambient(true, { night: state.time === 3, sea: w.kind === 'meer', river: w.kind === 'fluss' });
-  $('hint').textContent = TECHNIQUES[rod.tech].hint;
   if (state.mode === 'tournament') startTournament(s);
   else { tour = null; $('hud-timer').classList.add('hidden'); $('hud-rank').classList.add('hidden'); }
   banner(`${s.boat ? '🚤' : '🎣'} ${s.name}`, 'info', 1800);
+  if (!store.get('helpSeen', false) && !qs.has('go')) openHelp();
 }
 
 function updateGearChip() {
@@ -398,37 +417,60 @@ function updateGearChip() {
 }
 function updateCoins() { $('hud-coins').textContent = career() ? `🪙 ${state.career.coins}` : state.mode === 'tournament' ? '🏆 Turnier' : '🌅 Frei'; }
 
+// Schritt-Leiste: welcher Schritt ist dran, was soll man tun
+const STEPS = ['aim', 'cast', 'wait', 'strike', 'fight', 'land'];
+const WAIT_TEXT = {
+  pose: 'Beobachte die rot-gelbe Pose. Wackelt sie nur ein bisschen: noch warten! Taucht sie ganz ab: tippen.',
+  grund: 'Beobachte die Rutenspitze. Ruckt sie kräftig und bimmelt das Glöckchen: tippen.',
+  spinn: 'Knopf HALTEN = Köder einholen. Kleine Pausen machen die Fische neugierig. Bei einem Ruck: tippen!',
+  fliege: 'Die Fliege treibt auf dem Wasser. Schnappt ein Fisch zu (Spritzer!): sofort tippen.',
+};
+function coach(step, text, kind = '') {
+  const i = STEPS.indexOf(step);
+  document.querySelectorAll('#coach-steps li').forEach((li, k) => {
+    li.classList.toggle('now', k === i);
+    li.classList.toggle('done', k < i);
+    li.classList.toggle('hot', k === i && kind === 'hot');
+  });
+  $('coach-text').textContent = text;
+  $('coach-text').className = kind;
+}
+
 function setAction(st) {
   const t = fishing?.tech;
   const map = {
-    ready: ['🎣', isTouch ? 'HALTEN & LOSLASSEN' : 'HALTEN: AUSWERFEN'],
-    flying: ['💨', '…'],
-    waiting: t === 'spinn' ? ['🌀', 'HALTEN: EINKURBELN'] : t === 'fliege' ? ['🪰', 'WARTEN …'] : ['⏳', 'WARTEN …'],
-    bite: ['❗', 'ANSCHLAGEN!'],
-    fight: ['🌀', 'HALTEN: KURBELN'],
+    ready: ['🎣', 'HALTEN = AUSHOLEN'],
+    flying: ['💨', 'FLIEGT …'],
+    waiting: t === 'spinn' ? ['🌀', 'HALTEN = EINHOLEN'] : ['⏳', 'WARTEN …'],
+    bite: ['❗', 'JETZT TIPPEN!'],
+    fight: ['🌀', 'HALTEN = KURBELN'],
     landing: ['🥅', 'KESCHER!'],
     caught: ['🐟', 'GEFANGEN!'],
   }[st] || ['🎣', ''];
+  if (st === 'ready') coach('aim', `Mit ◀ ▶ zielen. Dann den runden Knopf GEDRÜCKT HALTEN – je länger, desto weiter. Loslassen = Wurf.`);
+  else if (st === 'flying') coach('cast', 'Der Köder fliegt …');
+  else if (st === 'waiting') coach('wait', WAIT_TEXT[t] || '');
+  else if (st === 'bite') coach('strike', '❗ BISS! Jetzt sofort den Knopf tippen!', 'hot');
+  else if (st === 'fight') coach('fight', 'Knopf HALTEN = kurbeln. Wird er ROT: sofort loslassen!');
+  else if (st === 'landing') coach('land', 'Gleich hast du ihn – ab in den Kescher!', 'good');
+  else if (st === 'caught') coach('land', '🎉 Gefangen!', 'good');
   $('action-ico').textContent = map[0];
   $('action-text').textContent = map[1];
   $('btn-action').className = 'tbtn action st-' + st;
-  $('btn-reelin').classList.toggle('hidden', !(st === 'waiting'));
+  $('btn-reelin').classList.toggle('hidden', !(st === 'waiting' && t !== 'spinn'));
   $('power').classList.toggle('hidden', st !== 'ready');
   $('fight').classList.toggle('hidden', st !== 'fight');
   const sideBtns = document.querySelectorAll('.tbtn.side');
+  sideBtns.forEach((b) => b.classList.remove('blink'));
   sideBtns.forEach((b) => b.classList.toggle('hidden', !(st === 'ready' || st === 'fight')));
 }
 
 function onFishEvent(type, d) {
   if (type === 'power') return; // Kraftanzeige liest der Loop direkt
   if (qs.has('bot') && type !== 'fight') console.log('EV', type, JSON.stringify(d));
-  if (type === 'state') {
-    setAction(d.state);
-    if (d.state === 'waiting') $('hint').textContent = TECHNIQUES[fishing.tech].hint;
-    if (d.state === 'ready') $('hint').textContent = 'Ziel mit ◀ ▶ wählen, dann Taste halten und loslassen. Im roten Bereich gibt es eine Perücke!';
-    if (d.state === 'fight') $('hint').textContent = 'KURBELN halten, aber nicht zu lange im roten Bereich! Wenn der Fisch flüchtet: loslassen. Mit ◀ ▶ die Rute gegen die Schwimmrichtung halten.';
-  } else if (type === 'msg') banner(d.text, d.kind, d.long ? 4500 : 2800);
-  else if (type === 'nibble') { if (fishing.tech === 'pose') banner('Zupf … zupf … noch nicht!', 'soft', 900); }
+  if (type === 'state') setAction(d.state);
+  else if (type === 'msg') banner(d.text, d.kind, d.long ? 4500 : 2800);
+  else if (type === 'nibble') { coach('wait', 'Zupf … zupf … das ist nur Knabbern – NOCH NICHT drücken!'); clearTimeout(onFishEvent.nib); onFishEvent.nib = setTimeout(() => fishing?.state === 'waiting' && setAction('waiting'), 1300); }
   else if (type === 'bite') { banner('❗ BISS! JETZT ANSCHLAGEN!', 'hot', 1100); navigator.vibrate?.(80); }
   else if (type === 'hooked') { banner(d.heavy ? '💪 Ein schwerer Brocken! Vorsicht!' : '🎣 Fisch hängt!', 'hot', 1500); navigator.vibrate?.(150); }
   else if (type === 'run') { $('fight-tip').textContent = '🏃 Flucht! Loslassen!'; }
@@ -438,7 +480,19 @@ function onFishEvent(type, d) {
     $('fight-tension').className = d.red ? 'red' : d.tension > 0.65 ? 'warn' : '';
     $('fight-stamina').style.width = d.stamina * 100 + '%';
     $('fight-dist').textContent = `${Math.round(d.dist)} m`;
-    $('fight-tip').textContent = d.run ? '🏃 Flucht! Loslassen!' : d.slack ? '⚠️ Schnur zu locker – kurbeln!' : d.red ? '🔥 Zu viel Spannung!' : d.side ? (d.countering ? '👍 Gut gegengehalten!' : `Fisch zieht nach ${d.side > 0 ? 'links' : 'rechts'} → halte ${d.side > 0 ? '▶' : '◀'}`) : '';
+    $('fight-tip').textContent = d.side ? (d.countering ? '👍 Gut gegengehalten!' : `Fisch zieht nach ${d.side > 0 ? 'links' : 'rechts'} → halte ${d.side > 0 ? '▶' : '◀'}`) : '';
+    // Großer Knopf: grün = kurbeln, rot = loslassen; Pfeil blinkt, wenn man gegenhalten soll
+    const letGo = d.run || d.tension > 0.85;
+    const btn = $('btn-action');
+    btn.classList.toggle('let', letGo);
+    btn.classList.toggle('reel', !letGo);
+    $('action-ico').textContent = letGo ? '✋' : '🌀';
+    $('action-text').textContent = letGo ? 'LOSLASSEN!' : 'HALTEN = KURBELN';
+    document.querySelector('[data-key="right"]').classList.toggle('blink', d.side > 0 && !d.countering);
+    document.querySelector('[data-key="left"]').classList.toggle('blink', d.side < 0 && !d.countering);
+    if (letGo) coach('fight', d.run ? '🏃 Der Fisch flüchtet – LOSLASSEN und warten!' : '🔥 Zu viel Spannung – LOSLASSEN!', 'hot');
+    else if (d.slack) coach('fight', '⚠️ Schnur zu locker – Knopf halten und kurbeln!');
+    else coach('fight', `Halten = kurbeln. Noch ${Math.round(d.dist)} m – der Fisch wird müde.`);
   } else if (type === 'lost') { banner(d.text, 'warn', 3800); setAction('ready'); }
   else if (type === 'caught') onCaught(d);
 }
@@ -476,7 +530,6 @@ function onCaught(c) {
     tour.me.kg += c.kg; tour.me.n++;
     tour.me.best = Math.max(tour.me.best, c.kg);
   }
-  $('hint').textContent = '';
   overlay('screen-catch', true);
   setAction('caught');
 }
@@ -549,14 +602,19 @@ function applyGear(rod, bait, depth) {
     // Neue Rute in die Hand
     const parent = world.angler.parent;
     const pos = world.angler.position.clone();
+    const yaw = world.angler.rotation.y;
     parent.remove(world.angler);
-    world.angler = createAngler(state.look, rod.id);
+    world.angler = createAngler(state.look, rod.id, { lifeJacket: !!fishing.o.spot.boat });
+    world.angler.rotation.y = yaw;
     world.angler.position.copy(pos);
     parent.add(world.angler);
   }
   updateGearChip();
 }
 $('hud-gear').onclick = () => { sfx.click(); openGear(); };
+function openHelp() { paused = true; overlay('screen-help', true); }
+$('btn-help').onclick = () => { sfx.click(); openHelp(); };
+$('btn-help-close').onclick = () => { sfx.click(); overlay('screen-help', false); paused = false; store.set('helpSeen', true); };
 $('btn-gear-close').onclick = () => { sfx.click(); overlay('screen-gear', false); paused = false; setAction(fishing.state); };
 
 // ---- Fangbuch ----
@@ -728,7 +786,8 @@ addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys[e.code] = true;
   if (e.code === 'Escape' || e.code === 'KeyP') {
-    if ($('screen-gear').classList.contains('active')) $('btn-gear-close').click();
+    if ($('screen-help').classList.contains('active')) $('btn-help-close').click();
+    else if ($('screen-gear').classList.contains('active')) $('btn-gear-close').click();
     else if ($('screen-book').classList.contains('active')) $('btn-book-close').click();
     else if (view === 'world' && !$('screen-catch').classList.contains('active')) pause(!paused);
   }
@@ -786,7 +845,10 @@ function onPower(p) {
   const el = $('power');
   el.classList.toggle('charging', p >= 0);
   $('power-fill').style.width = Math.max(0, p) * 100 + '%';
-  $('power-fill').className = p > 0.94 ? 'red' : '';
+  if (p >= 0 && fishing) {
+    $('power-text').textContent = `WURFWEITE ${Math.round(fishing.castDist || 0)} m`;
+    coach('cast', `Weiter halten = weiter werfen … LOSLASSEN zum Auswerfen! (${Math.round(fishing.castDist || 0)} m)`);
+  } else $('power-text').textContent = 'WURFWEITE';
 }
 const sonar = { x: 0, marks: [] };
 function drawSonar(dt) {
@@ -853,8 +915,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && vie
 
 // ---- Start ----
 renderMode();
-refreshAngler();
 showcase.resize();
+loading('Lade Angler …');
+try {
+  await Promise.all([preloadAngler(), showcase.ready]);
+  loading('');
+} catch (e) {
+  console.error(e);
+  loading('⚠️ ' + e.message + ' – bitte neu laden.');
+}
+refreshAngler();
 // Debug-Einstieg: ?go&water=bodensee&spot=lindau&mode=free&time=2
 if (qs.has('go')) {
   if (qs.get('mode')) state.mode = qs.get('mode');
@@ -864,18 +934,18 @@ if (qs.has('go')) {
   if (qs.get('time')) state.time = +qs.get('time');
   if (qs.get('rod')) state.rod = qs.get('rod');
   if (qs.get('bait')) state.bait = qs.get('bait');
-  startFishing();
+  await startFishing();
   // ?demo=fight:hecht bzw. ?demo=catch:wels springt direkt in den Drill / Fang
   const [demo, demoFish] = (qs.get('demo') || '').split(':');
   if (demo) {
     fishing.pending = demoFish || 'hecht';
-    fishing.lurePos.set(2, 0, 18);
+    fishing.lurePos.copy(world.base).add(new THREE.Vector3(2, 0, 18));
     fishing.hook();
     if (demo === 'catch') {
-      fishing.state = 'caught';
-      world.camMode = 'catch';
-      fishing.fishMesh.position.set(0.75, 2.02, 0.85);
-      onCaught({ ...fishing.hooked });
+      fishing.state = 'landing';
+      fishing.landT = 5;
+      fishing.landFrom = fishing.lurePos.clone();
+      fishing.fishMesh.visible = true;
     }
   }
 } else if (qs.get('screen') === 'map') { openMap(); } else if (qs.get('screen') === 'garage') { openGarage(); }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { FISH } from './data.js';
 
-// Prozedurale 3D-Fische: Körper aus einer verformten Kugel mit Vertex-Farben (Rücken dunkel, Bauch hell, Punkte/Streifen),
+// Prozedurale 3D-Fische: Körper als Röhre mit gemalter Haut-Textur (Verlauf, artgerechte Muster, Schuppen-Normalmap, nasser Glanz),
 // dazu Flossen als flache Formen. Länge des Modells = 1 (Kopf bei +x), mit fish.scale.setScalar(m) auf echte Länge bringen.
 
 // Körperprofil je Form: Radius über t (0 = Schwanz, 1 = Kopf), Höhe/Breite, Kopfspitze
@@ -22,54 +22,167 @@ const hash = (x, y, z) => {
   return s - Math.floor(s);
 };
 
+// Körper als Röhre mit sauberen UVs: u = Länge (0 Schwanz … 1 Maul), v = Umfang (0 Rücken, 0.5 Bauch, 1 Rücken)
 function bodyGeometry(sh, look) {
-  const geo = new THREE.SphereGeometry(1, 48, 24);
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  const cBody = new THREE.Color(look.body);
-  const cBack = new THREE.Color(look.back);
-  const cBelly = new THREE.Color(look.belly);
-  const cSpot = look.spots != null ? new THREE.Color(look.spots) : null;
-  const cBars = look.bars != null ? new THREE.Color(look.bars) : null;
-  const cScale = look.scales != null ? new THREE.Color(look.scales) : null;
-  const c = new THREE.Color();
+  const NU = 64;
+  const NV = 40;
+  const pos = [];
+  const uv = [];
+  const idx = [];
   const slim = look.slim ? 0.82 : 1;
-  for (let i = 0; i < pos.count; i++) {
-    let x = pos.getX(i);
-    let y = pos.getY(i);
-    let z = pos.getZ(i);
-    const t = (x + 1) / 2; // 0 Schwanz .. 1 Kopf
-    let p = Math.max(0.04, sh.prof(t));
+  for (let i = 0; i <= NU; i++) {
+    const t = i / NU;
+    let p = Math.max(0.025, sh.prof(t));
     if (sh.snout && t > 0.8) p *= 1 - ((t - 0.8) / 0.2) * sh.snout * 0.5;
-    let yy = y * sh.h * p * slim;
-    const zz = z * sh.w * p;
-    if (sh.hump && y > 0) yy *= 1 + sh.hump * Math.sin(Math.PI * Math.min(1, t * 1.3));
-    if (sh.flatHead && y > 0 && t > 0.6) yy *= 1 - (t - 0.6) * 0.9;
-    if (look.nose && t > 0.9 && y > -0.2) x += (t - 0.9) * 0.4; // stumpfe Nase der Nase
-    pos.setXYZ(i, x * 0.5, yy, zz);
-
-    // Farbe: Rücken -> Flanke -> Bauch
-    const v = y; // -1 Bauch .. 1 Rücken
-    if (v > 0.25) c.copy(cBody).lerp(cBack, Math.min(1, (v - 0.25) / 0.6));
-    else c.copy(cBody).lerp(cBelly, Math.min(1, (0.25 - v) / 0.7));
-    if (cBars && v > -0.4) {
-      const bar = Math.sin(t * Math.PI * 14);
-      if (bar > 0.55 && t > 0.2 && t < 0.85) c.lerp(cBars, 0.65);
+    // Kopfende rund schließen
+    const cap = t > 0.97 ? Math.sqrt(Math.max(0, 1 - Math.pow((t - 0.97) / 0.03, 2))) : 1;
+    for (let k = 0; k <= NV; k++) {
+      const v = k / NV;
+      const a = v * Math.PI * 2;
+      const cy = Math.cos(a);
+      const cz = Math.sin(a);
+      let y = cy * sh.h * p * slim * cap;
+      const z = cz * sh.w * p * cap;
+      if (sh.hump && cy > 0) y *= 1 + sh.hump * Math.sin(Math.PI * Math.min(1, t * 1.3));
+      if (sh.flatHead && cy > 0 && t > 0.6) y *= 1 - (t - 0.6) * 0.9;
+      if (cy < 0) y *= 0.92; // Bauch etwas flacher
+      let x = t - 0.5;
+      if (look.nose && t > 0.92 && cy > -0.2) x += (t - 0.92) * 0.5;
+      pos.push(x, y, z);
+      uv.push(t, v);
     }
-    if (cSpot && v > -0.45) {
-      const n = hash(Math.floor(t * 40), Math.floor((v + 1) * 9), z > 0 ? 1 : 2);
-      if (n > (look.shape === 'pike' ? 0.62 : 0.8)) c.lerp(cSpot, look.shape === 'flat' ? 0.95 : 0.8);
-    }
-    if (cScale) {
-      const sx = Math.sin(t * 90 + (v * 12)) * Math.sin(v * 30 - t * 20);
-      if (sx > 0.7) c.lerp(cScale, 0.35);
-    }
-    if (look.shape === 'salmon' || look.shape === 'grayling') c.offsetHSL(0, 0, (v + 1) * 0.02);
-    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
   }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  for (let i = 0; i < NU; i++) {
+    for (let k = 0; k < NV; k++) {
+      const a = i * (NV + 1) + k;
+      const b = a + NV + 1;
+      idx.push(a, a + 1, b, a + 1, b + 1, b);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
   geo.computeVertexNormals();
   return geo;
+}
+
+// Haut-Textur je Art: Farbverlauf Rücken → Flanke → Bauch, artgerechte Muster, Seitenlinie, Kiemendeckel, Schuppen
+const skinCache = {};
+function skinTextures(fishId, look) {
+  if (skinCache[fishId]) return skinCache[fishId];
+  const W = 1024;
+  const H = 512;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const css = (col, a = 1) => { const q = new THREE.Color(col); return `rgba(${q.r * 255 | 0},${q.g * 255 | 0},${q.b * 255 | 0},${a})`; };
+  // Grundverlauf (v = 0 Rücken, 0.5 Bauch, 1 Rücken)
+  const grad = g.createLinearGradient(0, 0, 0, H);
+  const stops = [[0, look.back], [0.06, look.back], [0.16, look.body], [0.3, look.body], [0.4, look.belly], [0.6, look.belly], [0.7, look.body], [0.84, look.body], [0.94, look.back], [1, look.back]];
+  for (const [o, col] of stops) grad.addColorStop(o, css(col));
+  g.fillStyle = grad; g.fillRect(0, 0, W, H);
+  // feines Rauschen
+  for (let i = 0; i < 9000; i++) {
+    g.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '255,255,255'},${Math.random() * 0.05})`;
+    g.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 6, 1 + Math.random() * 3);
+  }
+  const both = (fn) => { fn(false); fn(true); }; // Muster auf beiden Flanken
+  const Y = (v, mirror) => (mirror ? 1 - v : v) * H;
+  const rnd = (() => { let s = fishId.length * 7919; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
+  const shape = look.shape;
+  if (look.bars != null) {
+    // Querbinden (Barsch kräftig, Zander blass)
+    const n = fishId === 'barsch' ? 7 : 9;
+    both((m) => {
+      for (let i = 0; i < n; i++) {
+        const u = 0.22 + (i / n) * 0.58;
+        g.fillStyle = css(look.bars, fishId === 'barsch' ? 0.7 : 0.35);
+        g.beginPath();
+        g.moveTo(u * W - 14, Y(0.02, m)); g.lineTo(u * W + 14, Y(0.02, m));
+        g.lineTo(u * W + 6 + rnd() * 8, Y(0.33, m)); g.lineTo(u * W - 6, Y(0.35, m));
+        g.closePath(); g.fill();
+      }
+    });
+  }
+  if (look.spots != null) {
+    both((m) => {
+      const count = { pike: 160, flat: 70, catfish: 120, salmon: 90, grayling: 25 }[shape] || 80;
+      for (let i = 0; i < count; i++) {
+        const u = 0.08 + rnd() * 0.82;
+        let v = shape === 'flat' ? 0.05 + rnd() * 0.4 : shape === 'grayling' ? 0.18 + rnd() * 0.12 : 0.04 + rnd() * (fishId === 'lachs' ? 0.2 : 0.3);
+        if (shape === 'grayling' && u < 0.55) continue;
+        const r = shape === 'pike' ? 5 + rnd() * 4 : shape === 'flat' ? 5 + rnd() * 4 : shape === 'catfish' ? 6 + rnd() * 14 : 3 + rnd() * 4;
+        if (fishId === 'forelle' && rnd() < 0.45) {
+          // rote Punkte mit hellem Hof
+          g.fillStyle = 'rgba(245,235,220,0.8)'; g.beginPath(); g.arc(u * W, Y(v + 0.06, m), r + 3, 0, 7); g.fill();
+          g.fillStyle = css(0xc0392b, 0.95); g.beginPath(); g.arc(u * W, Y(v + 0.06, m), r, 0, 7); g.fill();
+          continue;
+        }
+        g.fillStyle = css(look.spots, shape === 'catfish' ? 0.45 : 0.85);
+        g.beginPath();
+        if (shape === 'pike') g.ellipse(u * W, Y(v + 0.05, m), r * 1.8, r * 0.9, 0, 0, 7);
+        else if (shape === 'flat') g.ellipse(u * W, Y(v, m), r * 0.9, r * 0.35, 0, 0, 7); // Plattfisch ist hoch gestreckt
+        else g.arc(u * W, Y(v, m), r, 0, 7);
+        g.fill();
+      }
+    });
+  }
+  // Seitenlinie
+  both((m) => {
+    g.strokeStyle = 'rgba(30,30,30,0.35)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(0.12 * W, Y(0.24, m)); g.quadraticCurveTo(0.5 * W, Y(0.22, m), 0.82 * W, Y(0.17, m)); g.stroke();
+    // Kiemendeckel
+    g.strokeStyle = 'rgba(20,20,20,0.35)'; g.lineWidth = 4;
+    g.beginPath(); g.arc(0.8 * W, Y(0.25, m), H * 0.18, -1.2, 1.2); g.stroke();
+  });
+  // Kopf etwas dunkler, Maulspitze
+  const hg = g.createLinearGradient(0.86 * W, 0, W, 0);
+  hg.addColorStop(0, 'rgba(0,0,0,0)'); hg.addColorStop(1, 'rgba(0,0,0,0.25)');
+  g.fillStyle = hg; g.fillRect(0.86 * W, 0, 0.14 * W, H);
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+
+  // Schuppen-Normalmap (Halbkreis-Reihen), Karpfen grob, Aal/Wels glatt
+  const scaleSize = { carp: 26, salmon: 9, perch: 12, pike: 9, grayling: 14, sturgeon: 0, eel: 0, catfish: 0, flat: 6 }[shape] ?? 10;
+  const n = document.createElement('canvas');
+  n.width = W; n.height = H;
+  const ng = n.getContext('2d');
+  ng.fillStyle = 'rgb(128,128,255)'; ng.fillRect(0, 0, W, H);
+  if (scaleSize) {
+    const sx = scaleSize * 1.6;
+    const sy = scaleSize;
+    for (let row = 0; row * sy < H + sy; row++) {
+      for (let col = 0; col * sx < W * 0.84; col++) {
+        const x = col * sx + (row % 2) * sx * 0.5;
+        const y = row * sy;
+        const gr = ng.createRadialGradient(x, y, 0, x, y, sy * 1.05);
+        gr.addColorStop(0, 'rgb(150,128,255)'); gr.addColorStop(0.75, 'rgb(128,128,255)'); gr.addColorStop(1, 'rgb(90,128,230)');
+        ng.fillStyle = gr;
+        ng.beginPath(); ng.arc(x, y, sy * 1.05, -Math.PI / 2, Math.PI / 2); ng.fill();
+      }
+    }
+  }
+  const normal = new THREE.CanvasTexture(n);
+  skinCache[fishId] = { map, normal };
+  return skinCache[fishId];
+}
+
+// Flossen: halbtransparent mit Flossenstrahlen
+let finTex = null;
+function finTexture() {
+  if (finTex) return finTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 2;
+  for (let i = 0; i < 14; i++) { g.beginPath(); g.moveTo(i * 9 + 4, 128); g.lineTo(i * 9 + 4 + (i - 7) * 1.5, 0); g.stroke(); }
+  finTex = new THREE.CanvasTexture(c);
+  finTex.wrapS = finTex.wrapT = THREE.RepeatWrapping;
+  finTex.repeat.set(6, 6);
+  return finTex;
 }
 
 function finShape(pts) {
@@ -87,13 +200,19 @@ export function createFish(fishId) {
   const g = new THREE.Group();
   g.name = 'fish-' + fishId;
 
-  const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.25 });
+  const skin = skinTextures(fishId, look);
+  const silver = ['salmon', 'grayling', 'sturgeon'].includes(look.shape) || fishId === 'doebel' || fishId === 'nase';
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    map: skin.map, normalMap: skin.normal, normalScale: new THREE.Vector2(0.6, 0.6),
+    roughness: 0.4, metalness: silver ? 0.15 : 0.0, clearcoat: 0.8, clearcoatRoughness: 0.2, // nass glänzende Haut
+    iridescence: silver ? 0.25 : 0.05, iridescenceIOR: 1.6, side: THREE.DoubleSide,
+  });
   const body = new THREE.Mesh(bodyGeometry(sh, look), bodyMat);
   body.castShadow = true;
   g.add(body);
 
   const finMat = new THREE.MeshStandardMaterial({
-    color: look.fin, roughness: 0.6, side: THREE.DoubleSide, transparent: true, opacity: 0.88,
+    color: look.fin, map: finTexture(), roughness: 0.45, side: THREE.DoubleSide, transparent: true, opacity: 0.82, depthWrite: false,
   });
   const H = sh.h * (look.slim ? 0.82 : 1);
 
@@ -154,8 +273,8 @@ export function createFish(fishId) {
   }
 
   // Augen
-  const eyeMat = new THREE.MeshStandardMaterial({ color: look.eye || 0xf0d070, roughness: 0.2, metalness: 0.3 });
-  const pupilMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.05 });
+  const eyeMat = new THREE.MeshPhysicalMaterial({ color: look.eye || 0xc8a040, roughness: 0.25, metalness: 0.4, clearcoat: 1 });
+  const pupilMat = new THREE.MeshPhysicalMaterial({ color: 0x020202, roughness: 0.02, clearcoat: 1 });
   const eyeR = look.shape === 'catfish' ? 0.008 : look.shape === 'eel' ? 0.01 : look.shape === 'zander' ? 0.02 : 0.016;
   const eyeX = look.shape === 'pike' || look.shape === 'sturgeon' ? 0.4 : 0.42;
   for (const side of look.shape === 'flat' ? [1] : [1, -1]) {
