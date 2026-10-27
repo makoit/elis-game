@@ -1,7 +1,7 @@
 {
   "name": "Elis Spiele",
   "short_name": "Elis Spiele",
-  "description": "Elis Spielesammlung – Bike Race und bald mehr",
+  "description": "Elis Spielesammlung – Bike Race, Angel-Abenteuer und bald mehr",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",

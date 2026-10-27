@@ -6,6 +6,7 @@ Kein Build, keine Abhängigkeiten zur Laufzeit. Für Laptop und Tablet (z. B. Am
 | Spiel | Kategorie | Ordner |
 |---|---|---|
 | 🚲 Bike Race | 🏁 Rennen | [games/bike-race/](games/bike-race/README.md) |
+| 🎣 Angel-Abenteuer | 🗺️ Abenteuer | [games/angeln/](games/angeln/README.md) |
 
 ## Starten
 

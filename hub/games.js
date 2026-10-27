@@ -25,4 +25,16 @@ export const GAMES = [
     tags: ['3D', 'Fahrrad', 'Motorrad'],
     isNew: true,
   },
+  {
+    id: 'angeln',
+    title: 'Angel-Abenteuer',
+    category: 'abenteuer',
+    path: './games/angeln/',
+    cover: './games/angeln/cover.svg',
+    emoji: '🎣',
+    colors: ['#19c3d9', '#0a5a8a'],
+    desc: 'Angeln an echten Gewässern – Gardasee, Bodensee, Ostsee, Donau, Po und Norwegen. 14 Fischarten, Garage, Turnier.',
+    tags: ['3D', 'Angeln', 'Natur'],
+    isNew: true,
+  },
 ];

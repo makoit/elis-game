@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Elis Angeln">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#062330">
+  <title>Elis Angel-Abenteuer</title>
+  <link rel="manifest" href="../../manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="../../icons/icon.svg">
+  <link rel="apple-touch-icon" href="../../icons/icon-192.png">
+  <link rel="stylesheet" href="./css/style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "../../vendor/three.module.js",
+      "three/addons/": "../../vendor/addons/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="ui">
+    <!-- Startmenü -->
+    <section id="screen-mode" class="screen menu active">
+      <div class="title">
+        <div class="logo"><span class="l1">ELIS</span><span class="l2">ANGEL-ABENTEUER</span></div>
+        <p class="tagline">🎣 Gardasee · Bodensee · Ostsee · Donau · Po · Norwegen</p>
+      </div>
+      <div class="cards big center" id="mode-cards">
+        <button class="card mode" data-mode="career"><div class="emoji">🏆</div><div class="name">Karriere</div><div class="desc">Fang Fische, verdiene Taler, kauf bessere Ausrüstung und schalte neue Gewässer frei.</div></button>
+        <button class="card mode" data-mode="tournament"><div class="emoji">⏱️</div><div class="name">Turnier</div><div class="desc">5 Minuten gegen 3 Computer-Angler: Wer hat am Ende das meiste Gewicht?</div></button>
+        <button class="card mode" data-mode="free"><div class="emoji">🌅</div><div class="name">Freies Angeln</div><div class="desc">Alle Gewässer, alle Ruten und Köder – einfach entspannt angeln.</div></button>
+      </div>
+      <div class="player-strip" id="player-strip"></div>
+      <p class="kbd-hint desktop-only">Zielen <kbd>←</kbd><kbd>→</kbd> · Auswerfen / Anschlagen / Kurbeln <kbd>Leertaste</kbd> halten · Ausrüstung <kbd>M</kbd> · Pause <kbd>Esc</kbd></p>
+      <div class="actions row">
+        <button id="btn-home" class="btn">◀ Alle Spiele</button>
+        <button id="btn-book" class="btn">📖 Fangbuch</button>
+        <button id="btn-settings" class="btn">⚙ Einstellungen</button>
+      </div>
+    </section>
+
+    <!-- Garage -->
+    <section id="screen-garage" class="screen menu garage-screen">
+      <h1>Angel-Garage <span class="step">1 / 2</span><span class="coins" id="garage-coins"></span></h1>
+      <div class="garage panel">
+        <div class="tabs" id="garage-tabs">
+          <button data-tab="angler" class="tab sel">🧑 Angler</button>
+          <button data-tab="rods" class="tab">🎣 Ruten</button>
+          <button data-tab="baits" class="tab">🪱 Köder</button>
+        </div>
+        <div id="tab-content" class="tab-content"></div>
+      </div>
+      <div class="actions row bottom-actions">
+        <button id="btn-back-mode" class="btn">◀ Zurück</button>
+        <button id="btn-random" class="btn">🎲 Zufall</button>
+        <button id="btn-to-map" class="btn primary">Gewässer wählen ▶</button>
+      </div>
+    </section>
+
+    <!-- Gewässer & Spot -->
+    <section id="screen-map" class="screen menu">
+      <h1>Wohin geht's? <span class="step">2 / 2</span><span class="coins" id="map-coins"></span></h1>
+      <div id="water-cards" class="water-strip"></div>
+      <div class="map-wrap">
+        <div class="map-box panel"><canvas id="map"></canvas><div class="map-legend">🎣 vom Ufer · 🚤 vom Boot · Karte: © OpenStreetMap</div></div>
+        <div class="spot-panel panel" id="spot-panel"></div>
+      </div>
+      <div class="actions row">
+        <button id="btn-back-garage" class="btn">◀ Garage</button>
+        <div class="levels"><span class="lbl">Tageszeit</span><div id="time-chips" class="chips"></div></div>
+        <button id="btn-go" class="btn primary">Angeln gehen 🎣</button>
+      </div>
+    </section>
+
+    <!-- HUD beim Angeln -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hud-left">
+          <div class="chip place"><small id="hud-water">GARDASEE</small><b id="hud-spot">Spot</b></div>
+          <button class="chip gear" id="hud-gear"><small>AUSRÜSTUNG <span class="desktop-only">(M)</span></small><b id="hud-gear-text">Rute · Köder</b></button>
+        </div>
+        <div class="hud-mid">
+          <div class="chip time hidden" id="hud-timer">5:00</div>
+        </div>
+        <div class="hud-right">
+          <div class="chip coins-chip" id="hud-coins">🪙 0</div>
+          <button id="btn-book2" class="icon-btn" aria-label="Fangbuch">📖</button>
+          <button id="btn-mute" class="icon-btn" aria-label="Ton">🔊</button>
+          <button id="btn-pause" class="icon-btn" aria-label="Pause">⏸</button>
+        </div>
+      </div>
+      <ol id="hud-rank" class="hud-rank hidden"></ol>
+      <canvas id="sonar" class="sonar hidden" width="220" height="120"></canvas>
+      <div id="hint" class="hint-box"></div>
+      <div id="banner"></div>
+      <div id="power" class="power hidden"><i id="power-fill"></i><span class="sweet"></span><b>KRAFT</b></div>
+      <div id="fight" class="fight hidden">
+        <div class="meter tension"><span>Spannung</span><div class="bar"><i id="fight-tension"></i><em class="red"></em></div></div>
+        <div class="meter stamina"><span>Kraft des Fisches</span><div class="bar"><i id="fight-stamina"></i></div></div>
+        <div class="fight-info"><b id="fight-dist">20 m</b><span id="fight-tip"></span></div>
+      </div>
+    </div>
+
+    <!-- Touch-/Maus-Steuerung -->
+    <div id="controls" class="hidden">
+      <div class="pad left">
+        <button class="tbtn side" data-key="left" aria-label="Links">◀</button>
+        <button class="tbtn side" data-key="right" aria-label="Rechts">▶</button>
+      </div>
+      <div class="pad right">
+        <button id="btn-reelin" class="tbtn small hidden">⤺ Einholen</button>
+        <button id="btn-action" class="tbtn action" data-key="action"><span id="action-ico">🎣</span><b id="action-text">HALTEN &amp; LOSLASSEN</b></button>
+      </div>
+    </div>
+
+    <!-- Montage (Ausrüstung am Platz wechseln) -->
+    <section id="screen-gear" class="screen overlay">
+      <div class="dialog wide scroll">
+        <h2>Montage</h2>
+        <div class="setting col"><span>Rute</span><div class="chips wrap" id="gear-rods"></div></div>
+        <div class="setting col"><span>Köder</span><div class="chips wrap" id="gear-baits"></div></div>
+        <div class="setting col" id="gear-depth-row"><span>Tiefe <small>(wie tief der Köder unter der Pose hängt)</small></span><div class="chips" id="gear-depth"></div></div>
+        <div class="setting col"><span>Bremse <small>(weich = Fisch bekommt leichter Schnur)</small></span><div class="chips" id="gear-drag"></div></div>
+        <p class="muted small" id="gear-tip"></p>
+        <button id="btn-gear-close" class="btn primary">Fertig</button>
+      </div>
+    </section>
+
+    <!-- Fang -->
+    <section id="screen-catch" class="screen overlay catch">
+      <div class="dialog catch-card">
+        <div class="ribbon hidden" id="catch-new">NEUE ART!</div>
+        <h2 id="catch-name">Hecht</h2>
+        <div class="latin" id="catch-latin"></div>
+        <div class="catch-stats"><div><b id="catch-kg">4,2 kg</b><small>Gewicht</small></div><div><b id="catch-cm">90 cm</b><small>Länge</small></div></div>
+        <div class="muted" id="catch-record"></div>
+        <p class="info" id="catch-info"></p>
+        <p class="rule hidden" id="catch-rule"></p>
+        <div class="btn-row">
+          <button id="btn-keep" class="btn primary">Behalten 🪙</button>
+          <button id="btn-release" class="btn">Zurücksetzen 💧</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Fangbuch -->
+    <section id="screen-book" class="screen overlay">
+      <div class="dialog wide scroll">
+        <h2>📖 Fangbuch <small id="book-count"></small></h2>
+        <div class="book-grid" id="book-grid"></div>
+        <button id="btn-book-close" class="btn primary">Schließen</button>
+      </div>
+    </section>
+
+    <!-- Einstellungen -->
+    <section id="screen-settings" class="screen overlay">
+      <div class="dialog wide scroll">
+        <h2>Einstellungen</h2>
+        <div class="setting"><span>Grafik</span><div class="chips" id="set-quality"></div></div>
+        <label class="setting"><span>Anfänger-Hilfe <small>(mehr Zeit zum Anschlagen, Fische ermüden schneller)</small></span><input type="checkbox" id="chk-easy"></label>
+        <label class="setting"><span>Geräusche</span><input type="checkbox" id="chk-sound"></label>
+        <button id="btn-reset" class="btn danger">Karriere zurücksetzen</button>
+        <button id="btn-settings-close" class="btn primary">Fertig</button>
+      </div>
+    </section>
+
+    <!-- Pause -->
+    <section id="screen-pause" class="screen overlay">
+      <div class="dialog">
+        <h2>Pause</h2>
+        <button id="btn-resume" class="btn primary">Weiter</button>
+        <button id="btn-to-spots" class="btn">Anderer Platz</button>
+        <button id="btn-quit" class="btn">Zum Menü</button>
+        <button id="btn-quit-home" class="btn">Alle Spiele</button>
+      </div>
+    </section>
+
+    <!-- Turnier-Ergebnis -->
+    <section id="screen-result" class="screen overlay">
+      <div class="dialog wide scroll">
+        <h2 id="result-title">Turnier vorbei!</h2>
+        <ol id="result-ranking" class="ranking"></ol>
+        <div id="result-catches" class="muted"></div>
+        <div class="btn-row">
+          <button id="btn-again" class="btn primary">Nochmal</button>
+          <button id="btn-result-menu" class="btn">Zum Menü</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="toast"></div>
+  </div>
+  <script type="module" src="./js/main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load', () => navigator.serviceWorker.register('../../sw.js', { scope: '../../' }).catch(() => {}));
+    }
+  </script>
+</body>
+</html>

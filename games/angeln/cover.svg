@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+<defs>
+  <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a5ab0"/><stop offset="0.6" stop-color="#ff9a5a"/><stop offset="1" stop-color="#ffd08a"/></linearGradient>
+  <linearGradient id="water" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c8aa0"/><stop offset="1" stop-color="#062a40"/></linearGradient>
+  <linearGradient id="fish" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34461d"/><stop offset="0.5" stop-color="#6f8a3e"/><stop offset="1" stop-color="#ece8c8"/></linearGradient>
+  <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff3c0"/><stop offset="0.5" stop-color="#ffc66a" stop-opacity="0.8"/><stop offset="1" stop-color="#ff9a5a" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="800" height="500" fill="url(#sky)"/>
+<circle cx="600" cy="250" r="150" fill="url(#sun)"/>
+<circle cx="600" cy="250" r="48" fill="#fff3c0"/>
+<path d="M0 270 L90 170 L160 220 L250 120 L330 200 L420 140 L520 230 L640 160 L720 210 L800 150 V290 H0Z" fill="#5a6a8a" opacity="0.75"/>
+<path d="M250 120 L280 150 L262 148 L250 160 L236 150 L222 152Z M420 140 L445 165 L430 162 L420 172 L408 162Z" fill="#fff" opacity="0.9"/>
+<path d="M0 290 L120 250 L260 280 L420 245 L560 275 L700 250 L800 270 V300 H0Z" fill="#2e4a3a"/>
+<rect y="290" width="800" height="210" fill="url(#water)"/>
+<path d="M520 300 h160 M560 320 h110 M590 340 h60" stroke="#ffe08a" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+<g stroke="#fff" stroke-width="3" stroke-linecap="round" opacity="0.35" fill="none">
+  <path d="M40 360 q15 -8 30 0 t30 0"/><path d="M180 420 q15 -8 30 0 t30 0"/><path d="M90 470 q15 -8 30 0 t30 0"/><path d="M700 440 q15 -8 30 0 t30 0"/>
+</g>
+<!-- Rute und Schnur -->
+<path d="M70 500 Q200 200 420 70" stroke="#1d1d1d" stroke-width="9" fill="none" stroke-linecap="round"/>
+<path d="M420 70 Q470 160 470 250" stroke="#f4f4e8" stroke-width="2.5" fill="none"/>
+<circle cx="110" cy="440" r="22" fill="#2a2e36" stroke="#9aa6bd" stroke-width="4"/>
+<!-- springender Hecht -->
+<g transform="translate(470 250) rotate(-28)">
+  <path d="M-150 0 Q-60 -48 70 -26 Q120 -16 140 0 Q120 16 70 24 Q-60 46 -150 0Z" fill="url(#fish)"/>
+  <path d="M-150 0 L-205 -42 L-188 0 L-205 42Z" fill="#9a6a3a"/>
+  <path d="M-80 -30 L-60 -62 L-30 -36Z" fill="#9a6a3a"/>
+  <g fill="#d8d49a" opacity="0.8"><ellipse cx="-90" cy="-6" rx="7" ry="4"/><ellipse cx="-50" cy="6" rx="8" ry="4"/><ellipse cx="-20" cy="-12" rx="7" ry="4"/><ellipse cx="10" cy="4" rx="8" ry="4"/><ellipse cx="-110" cy="10" rx="6" ry="3"/></g>
+  <circle cx="102" cy="-8" r="8" fill="#f0d070"/><circle cx="104" cy="-8" r="4" fill="#111"/>
+  <path d="M140 0 L118 4" stroke="#333" stroke-width="3"/>
+</g>
+<g fill="#ffffff" opacity="0.9">
+  <circle cx="330" cy="300" r="7"/><circle cx="360" cy="285" r="5"/><circle cx="305" cy="282" r="4"/><circle cx="390" cy="305" r="6"/><circle cx="350" cy="312" r="4"/><circle cx="280" cy="300" r="5"/>
+</g>
+<path d="M250 310 q60 -24 140 0" stroke="#fff" stroke-width="4" fill="none" opacity="0.6"/>
+<!-- Pose -->
+<g transform="translate(640 380)"><ellipse rx="10" ry="16" fill="#fff"/><rect x="-4" y="-34" width="8" height="20" rx="3" fill="#ff3a1a"/></g>
+<ellipse cx="640" cy="394" rx="30" ry="6" fill="none" stroke="#fff" stroke-width="2" opacity="0.5"/>
+</svg>
