@@ -361,7 +361,7 @@ def heuristic_cover(habs, hrel, cell, lat, mask=None):
     treeline = 1900 if lat < 50 else 1300 if lat < 60 else 700
     out = np.full(habs.shape, MEADOW, np.uint8)
     out[(slope > 10) & (habs < treeline)] = FOREST
-    out[(slope < 6) & (hrel > 3)] = FARM
+    out[(slope < 6) & (hrel > 3) & (hrel < 150)] = FARM  # Äcker nur im Tal, nicht auf Hochflächen
     out[slope > 38] = ROCK
     out[habs > treeline + 250] = ROCK
     out[(habs > treeline) & (habs <= treeline + 250) & (slope < 30)] = MEADOW
@@ -439,15 +439,16 @@ def build_grid(fr, g, wid, kind, n, size, z, level, depth, cover=None):
     return h, lc, habs, water
 
 
-def fix_origin(h, lc, boat, depth):
-    """Standplatz trocken (0,5–2 m), Wasser direkt davor; Boot: Ursprung im Wasser."""
+def fix_origin(h, lc, boat, depth, harbour=False):
+    """Standplatz trocken (0,5–2 m), Wasser direkt davor; Boot: Ursprung im Wasser.
+    Hafen: senkrechte Kaimauer (1,2 m), Wasser beginnt 1–2 m vor dem Angler."""
     n = h.shape[0]
     c = n // 2
     if boat:
         h[c - 2:c + 3, c - 2:c + 3] = np.minimum(h[c - 2:c + 3, c - 2:c + 3], -max(2.0, min(depth, 40) * 0.8))
         lc[c - 2:c + 3, c - 2:c + 3] |= WATER_BIT
         return 0.0
-    stand = float(np.clip(h[c, c] if h[c, c] > 0 else 1.0, 0.6, 1.8))
+    stand = 1.2 if harbour else float(np.clip(h[c, c] if h[c, c] > 0 else 1.0, 0.6, 1.8))
     # hinter dem Angler (z <= 0) im Umkreis 20 m: trockener, sanfter Platz
     for dj in range(-2, 1):
         for di in range(-2, 3):
@@ -458,8 +459,9 @@ def fix_origin(h, lc, boat, depth):
                 h[j, i] = target if r < 1.01 else max(min(h[j, i], target + 1.0), 0.4)
                 lc[j, i] &= ~WATER_BIT & 0xFF
     # davor (z = +10 m, +20 m): Wasser
-    for dj, dep in ((1, 1.2), (2, 2.0)):
-        for di in (-1, 0, 1):
+    front = ((1, 6.0), (2, 6.5), (3, 7.0)) if harbour else ((1, 1.2), (2, 2.0))
+    for dj, dep in front:
+        for di in ((-2, -1, 0, 1, 2) if harbour else (-1, 0, 1)):
             j, i = c + dj, c + di
             h[j, i] = min(h[j, i], -dep)
             lc[j, i] |= WATER_BIT
@@ -550,7 +552,7 @@ def main():
             nx, nz = grid_xz(NEAR_N, NEAR_SIZE)
             cov = landcover(fr, osm, NEAR_N, NEAR_SIZE)
             hn, ln, _, _ = build_grid(fr, g, w['id'], w['kind'], NEAR_N, NEAR_SIZE, NEAR_Z, level, depth, cov)
-            stand = fix_origin(hn, ln, s['boat'], depth)
+            stand = fix_origin(hn, ln, s['boat'], depth, s.get('harbour', False))
             hf, lf, _, _ = build_grid(fr, g, w['id'], w['kind'], FAR_N, FAR_SIZE, FAR_Z, level, min(40.0, max(depth, 15.0)))
             bl = buildings(fr, osm)
             with open(os.path.join(OUT, s['id'] + '.bin'), 'wb') as f:

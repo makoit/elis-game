@@ -35,14 +35,51 @@ export function createSky({ top, horizon, ground = 0x667766, sunDir = new THREE.
 }
 
 export function createEnvMap(renderer, skyOpts) {
+  return envFromScene(renderer, createSky(skyOpts));
+}
+
+function envFromScene(renderer, mesh) {
   const s = new THREE.Scene();
-  s.add(createSky(skyOpts));
+  s.add(mesh);
   const pm = new THREE.PMREMGenerator(renderer);
   const rt = pm.fromScene(s, 0, 0.1, 1000);
   pm.dispose();
   s.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   return rt.texture;
 }
+
+// Himmelsfoto (Poly Haven, equirektangular) als Kuppel. Das Foto wird um die Hochachse gedreht, sodass seine Sonne
+// in Richtung des Sonnenlichts der Strecke steht (sunDir) – Schatten, Glanzlichter und Foto passen zusammen.
+// sky: { bg, hdr, meta } aus assets.loadSky
+function photoOffset(sky, sunDir) {
+  const photoAz = (sky.meta.u - 0.5) * Math.PI * 2; // three.js: u = atan(z, x) / 2π + 0.5
+  return Math.atan2(sunDir.z, sunDir.x) - photoAz;
+}
+function photoDome(tex, offset, radius = 450) {
+  const mat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+    uniforms: { tSky: { value: tex }, uOff: { value: offset } },
+    vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader: `
+      uniform sampler2D tSky; uniform float uOff;
+      varying vec3 vDir;
+      void main(){
+        vec3 d = normalize(vDir);
+        float u = fract((atan(d.z, d.x) - uOff) / 6.2831853 + 0.5);
+        float v = asin(clamp(d.y, -1.0, 1.0)) / 3.14159265 + 0.5;
+        gl_FragColor = vec4(texture2D(tSky, vec2(u, v)).rgb, 1.0);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 48, 24), mat);
+  mesh.renderOrder = -10;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+export const createPhotoSky = (sky, sunDir) => photoDome(sky.bg, photoOffset(sky, sunDir));
+export const createPhotoEnvMap = (renderer, sky, sunDir) => envFromScene(renderer, photoDome(sky.hdr, photoOffset(sky, sunDir), 100));
 
 // ---------------------------------------------------------------------------------------------
 // Ferne Landschaft: mehrere Silhouetten-Ringe hintereinander (Tiefe), je weiter weg desto heller und

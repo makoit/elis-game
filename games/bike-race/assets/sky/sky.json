@@ -1,0 +1,50 @@
+{
+ "wiese": {
+  "source": "kloofendal_48d_partly_cloudy_puresky",
+  "u": 0.5947,
+  "elevation": 47.9,
+  "horizon": "#9aa1ae"
+ },
+ "kueste": {
+  "source": "kloofendal_43d_clear_puresky",
+  "u": 0.6001,
+  "elevation": 42.98,
+  "horizon": "#a7b9cb"
+ },
+ "wald": {
+  "source": "kloppenheim_05_puresky",
+  "u": 0.5996,
+  "elevation": 74.44,
+  "horizon": "#949bab"
+ },
+ "canyon": {
+  "source": "qwantani_late_afternoon_puresky",
+  "u": 0.6001,
+  "elevation": 19.07,
+  "horizon": "#adb2bc"
+ },
+ "bikepark": {
+  "source": "qwantani_sunset_puresky",
+  "u": 0.5996,
+  "elevation": 6.06,
+  "horizon": "#a5acaa"
+ },
+ "pumptrack": {
+  "source": "kloppenheim_02_puresky",
+  "u": 0.5986,
+  "elevation": 16.96,
+  "horizon": "#708091"
+ },
+ "weinberg": {
+  "source": "citrus_orchard_puresky",
+  "u": 0.7036,
+  "elevation": 15.38,
+  "horizon": "#566572"
+ },
+ "gardasee": {
+  "source": "pizzo_pernice_puresky",
+  "u": 0.6006,
+  "elevation": 53.17,
+  "horizon": "#b5c9d7"
+ }
+}

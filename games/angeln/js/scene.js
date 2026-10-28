@@ -6,7 +6,7 @@ import { createAngler, rodLinePoints } from './angler.js';
 import { loadTerrain, heightAt, coverAt, terrainGeometry, treeInstances, buildingMeshes, COVER } from './terrain.js';
 import { TERRAIN } from './terrainmeta.js';
 import { forest, reeds, tex } from './flora.js';
-import { createFloat, createLure, createBoat, dropTexture } from './tackle.js';
+import { createFloat, createLure, createBoat, createNet, dropTexture } from './tackle.js';
 
 // 3D-Angelplatz: echtes Gelände (Höhendaten + OSM-Landnutzung), Foto-Himmel je Tageszeit (HDRI),
 // spiegelndes Wasser, Bäume, Gebäude, Steg/Felsen/Boot und der Angler.
@@ -78,7 +78,7 @@ function terrainMaterial() {
         float wForest = vCover.x, wRock = vCover.y, wSand = vCover.z, wVine = vCover.w;
         float wTown = vCover2.x, wFarm = vCover2.y, wWet = vCover2.z, wMeadow = vCover2.w;
         // steile Hänge werden Fels, Uferlinie Kies, hohe Lagen Schnee
-        float steep = smoothstep(0.38, 0.62, slope);
+        float steep = smoothstep(0.55, 0.8, slope);
         wRock = max(wRock, steep);
         float shore = 1.0 - smoothstep(0.4, 2.2, vWPos.y);
         float under = 1.0 - smoothstep(-0.6, -0.05, vWPos.y);
@@ -98,6 +98,10 @@ function terrainMaterial() {
         col /= max(wsum, 0.001);
         vec2 rp = abs(vWNor.x) > abs(vWNor.z) ? vWPos.zy : vWPos.xy;
         vec3 rock = mix(tri(tRock, rp, dist), tri(tCliff, P, dist), 0.35 + macro * 0.3);
+        float rl = dot(rock, vec3(0.3, 0.55, 0.15));
+        rock = mix(rock, vec3(rl) * vec3(0.95, 0.95, 0.98), 0.75); // grauer Kalkstein statt Sand
+        // Felsflächen mit Bewuchs (Büsche) – in der Ferne grün gesprenkelt
+        rock = mix(rock, canopy * 1.3, smoothstep(0.45, 0.75, vnoise(P * 0.03)) * (1.0 - steep) * 0.7);
         col = mix(col, rock, clamp(wRock, 0.0, 1.0));
         col = mix(col, tri(tPebble, P * 1.5, dist), shore * (1.0 - wSand * 0.5) * 0.85);
         float snow = smoothstep(1650.0, 1900.0, vWPos.y + macro * 150.0) * (1.0 - steep * 0.6);
@@ -131,7 +135,7 @@ export class FishingScene {
   constructor(renderer) {
     this.renderer = renderer;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 30000);
+    this.camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.05, 30000);
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.t = 0;
     this.quality = 'high';
@@ -231,9 +235,14 @@ export class FishingScene {
       s.add(buildingMeshes(this.terrain, pal));
     }
 
+    if (spot.id === 'sundbruecke' || spot.id === 'staberhuk' || spot.id === 'burgtiefe') this.addBridge(spot);
+
     // ---- Standplatz: Ufer (Steg/Felsen) oder Boot ----
     progress('Angler …');
     this.base = new THREE.Vector3(0, 0, 0);
+    this.ledgeBox = null;
+    this.moored = null;
+    this.pier = null;
     this.angler = createAngler(look, rodId, { lifeJacket: !!spot.boat });
     if (spot.boat) {
       this.boat = createBoat();
@@ -243,7 +252,7 @@ export class FishingScene {
       this.base.set(0, 0, 0.4);
     } else {
       this.boat = null;
-      await this.addShoreProps(sc);
+      await this.addShoreProps(sc, spot);
       this.angler.position.copy(this.base);
       s.add(this.angler);
     }
@@ -262,9 +271,9 @@ export class FishingScene {
     this.lure = new THREE.Group();
     this.lure.visible = false;
     s.add(this.lure);
-    this.aim = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.0, 48), new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
+    this.aim = new THREE.Mesh(new THREE.RingGeometry(0.7, 1.0, 48), new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false, fog: false }));
     this.aim.rotation.x = -Math.PI / 2;
-    this.aim.renderOrder = 2;
+    this.aim.renderOrder = 5; // immer sichtbar (auch über spiegelndem Wasser)
     s.add(this.aim);
     this.shadowFish = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: 0x041018, transparent: true, opacity: 0.35, depthWrite: false }));
     this.shadowFish.rotation.x = -Math.PI / 2;
@@ -287,6 +296,9 @@ export class FishingScene {
     }
     this.ringIdx = 0;
     this._linePts = [];
+    this.net = createNet();
+    this.net.visible = false;
+    s.add(this.net);
 
     this.camMode = 'aim';
     this.camTarget = new THREE.Vector3(0, 0, 25);
@@ -294,6 +306,30 @@ export class FishingScene {
     this._look = null;
     this.update(0);
     progress('');
+  }
+
+  // Höhe genau so, wie das Dreiecksnetz sie zeichnet (Diagonale wie in terrainGeometry: a, a+n, a+1 / a+1, a+n, a+n+1)
+  meshHeight(x, z) {
+    const g = this.terrain.near;
+    const fx = (x + g.size / 2) / g.cell;
+    const fz = (z + g.size / 2) / g.cell;
+    const i = Math.floor(fx);
+    const j = Math.floor(fz);
+    const u = fx - i;
+    const v = fz - j;
+    const H = (ii, jj) => g.h[jj * g.n + ii];
+    if (u + v <= 1) return H(i, j) + (H(i + 1, j) - H(i, j)) * u + (H(i, j + 1) - H(i, j)) * v;
+    return H(i + 1, j + 1) + (H(i, j + 1) - H(i + 1, j + 1)) * (1 - u) + (H(i + 1, j) - H(i + 1, j + 1)) * (1 - v);
+  }
+
+  // Bodenhöhe (relativ zum Wasserspiegel); unter 0 = Wasser. Steg/Boot stehen über tiefem Wasser.
+  groundAt(x, z) {
+    if (this.moored) for (const b of this.moored) if (Math.abs(x - b.position.x) < 2.6 && Math.abs(z - b.position.z) < 1.2) return 0.5; // Boote im Hafen
+    if (this.pier && Math.abs(x) < 1.3 && z > this.pier.from && z < this.pier.to) return 0.5;
+    if (this.ledgeBox && Math.abs(x) < 1.7 && z > this.ledgeBox[0] && z < this.ledgeBox[1]) return this.base.y;
+    if (this.terrain) return heightAt(this.terrain, x, z);
+    if (this.boat) return -10;
+    return z < (this.pier ? this.pier.from : 0) ? 0.5 : -3;
   }
 
   // Breite des Flusses vor dem Angler (für die Wurfweite)
@@ -337,35 +373,45 @@ export class FishingScene {
     s.add(this.reeds);
   }
 
-  async addShoreProps(sc) {
+  async addShoreProps(sc, spot) {
     const s = this.scene;
     const t = this.terrain;
     const h0 = t ? heightAt(t, 0, 0) : 0.8;
+    if (spot.harbour) return this.addHarbour();
     // Holzsteg an flachen Schilf-/Sandufern, sonst Uferfelsen
     // Kein festes Land unter dem Standplatz (Gelände fehlt / Uferlinie ungenau)? Dann immer auf einen Steg stellen.
     const dry = t && h0 > 0.25 && heightAt(t, 0, -3) > 0.25;
     if (sc.shore === 'meadow' || sc.shore === 'sand' || !dry) {
-      const pier = (await glb('modular_wooden_pier')).clone(true);
-      pier.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      const box = new THREE.Box3().setFromObject(pier);
+      // Holzsteg vom Ufer ins Wasser; Angler steht am Ende
+      let land = 0;
+      if (t) while (land > -30 && heightAt(t, 0, land) < 0.3) land -= 1; // Steg beginnt auf festem Boden
+      const len = 12 - land;
       const deckY = 1.0;
-      pier.position.set(-(box.min.x + box.max.x) / 2, deckY - box.max.y + 0.05, -box.min.z - 4);
-      s.add(pier);
-      this.pier = pier;
-      this.base.set(0, deckY, 9);
+      s.add(this.jetty(land, len, deckY));
+      this.pier = { from: land, to: land + len };
+      this.base.set(0, deckY, land + len - 1.2);
     } else {
-      this.base.set(0, Math.max(0.4, h0), 0);
+      // bis an die Uferkante vorgehen (ca. 1 m vor dem Wasser), damit Kescher und Fisch zusammenpassen
+      let z = 0;
+      while (z < 15 && this.meshHeight(0, z + 1.2) > 0.3) z += 0.2;
+      // Uferfels als Standplatte: oben flach auf Standhöhe, reicht nach hinten ins Gelände und vorn ins Wasser
+      const top = Math.max(0.5, this.meshHeight(0, z), this.meshHeight(0, z - 1.5) + 0.1);
+      this.base.set(0, top, z);
+      s.add(this.ledge(top, z));
+      this.ledgeBox = [z - 3, z + 1.3];
       const rocks = await glb('rock_moss_set_01');
       const parts = [];
       rocks.traverse((o) => { if (o.isMesh) parts.push(o); });
       const r = (i) => Math.abs(Math.sin(i * 91.7));
       for (let i = 0; i < 24; i++) {
         const x = (r(i) - 0.5) * 36;
-        const z = 0.8 + r(i + 7) * 6;
-        if (Math.abs(x) < 1.4 && z < 3) continue;
+        const z = this.base.z - 2 + r(i + 7) * 6;
+        if (Math.abs(x) < 1.6 && Math.abs(z - this.base.z) < 2.5) continue;
+        const hy = t ? heightAt(t, x, z) : 0;
+        if (hy < 0.15) continue; // keine Felsen ins Wasser, damit der Fisch nicht hindurchschwimmt
         const p = parts[i % parts.length].clone();
         p.scale.setScalar(0.25 + r(i + 3) * 0.35);
-        p.position.set(x, Math.max(t ? heightAt(t, x, z) : 0, -0.6) - 0.1, z);
+        p.position.set(x, hy - 0.1, z);
         p.rotation.set(r(i + 1) * 0.4, r(i + 2) * 6, 0);
         p.castShadow = true; p.receiveShadow = true;
         s.add(p);
@@ -382,6 +428,153 @@ export class FishingScene {
       l.position.set(this.base.x + 0.6, this.base.y + 0.3, this.base.z - 1.0);
       s.add(lantern, l);
     }
+  }
+
+  // echte Koordinate -> Spielkoordinate (Ursprung = Platz, +z = Blickrichtung, +x = links)
+  toGame(spot, lat, lon) {
+    const h = TERRAIN[spot.id]?.heading ?? 0;
+    const dn = (lat - spot.lat) * 111320;
+    const de = (lon - spot.lon) * 111320 * Math.cos((spot.lat * Math.PI) / 180);
+    const right = de * Math.cos(h) - dn * Math.sin(h);
+    return new THREE.Vector3(-right, 0, de * Math.sin(h) + dn * Math.cos(h));
+  }
+
+  // Fehmarnsundbrücke: Netzwerkbogen („Kleiderbügel“), 963 m lang, Bogen 248 m Spannweite, 45 m hoch
+  addBridge(spot) {
+    const a = this.toGame(spot, 54.3953, 11.1123); // Großenbroder Fähre
+    const b = this.toGame(spot, 54.4071, 11.1226); // Fehmarn
+    const g = new THREE.Group();
+    const L = a.distanceTo(b);
+    const steel = new THREE.MeshStandardMaterial({ color: 0xc8452a, roughness: 0.5, metalness: 0.3 });
+    const concrete = new THREE.MeshStandardMaterial({ color: 0xb8b6ae, roughness: 0.85 });
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(21, 2.5, L), concrete);
+    deck.position.y = 23; g.add(deck);
+    for (let z = -L / 2 + 30; z < L / 2 - 20; z += 60) {
+      if (Math.abs(z) < 130) continue;
+      const p = new THREE.Mesh(new THREE.BoxGeometry(6, 23, 4), concrete); p.position.set(0, 11.5, z); g.add(p);
+    }
+    const pts = [];
+    for (let i = 0; i <= 40; i++) { const u = i / 40; pts.push(new THREE.Vector3(0, 24 + Math.sin(u * Math.PI) * 45, -124 + u * 248)); }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    for (const x of [-9, 9]) { const arch = new THREE.Mesh(new THREE.TubeGeometry(curve, 60, 1.3, 8), steel); arch.position.x = x; g.add(arch); }
+    // Hänger (Netzwerk) und Querriegel oben
+    const hp = [];
+    for (let i = 1; i < 40; i++) {
+      const top = curve.getPoint(i / 40);
+      for (const x of [-9, 9]) { hp.push(x, top.y, top.z, x, 24.5, top.z + (i % 2 ? 16 : -16)); }
+    }
+    const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hp, 3));
+    g.add(new THREE.LineSegments(hg, new THREE.LineBasicMaterial({ color: 0xc8452a })));
+    for (let i = 4; i < 37; i += 4) { const p = curve.getPoint(i / 40); const r = new THREE.Mesh(new THREE.BoxGeometry(18, 0.8, 0.8), steel); r.position.set(0, p.y, p.z); g.add(r); }
+    g.position.copy(a).lerp(b, 0.5);
+    g.lookAt(b.x, 0, b.z);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
+    this.scene.add(g);
+  }
+
+  // Holzsteg: Bohlen mit kleinen Fugen, Pfähle bis in den Grund, Querbalken
+  jetty(z0, len, deckY) {
+    const g = new THREE.Group();
+    const wood = new THREE.MeshStandardMaterial({ map: tex('planks_diff.jpg'), normalMap: tex('planks_nor.jpg', { srgb: false }), roughness: 0.85, color: 0xc8b8a0 });
+    const dark = new THREE.MeshStandardMaterial({ map: tex('bark_diff.jpg'), color: 0x6a5a48, roughness: 0.9 });
+    const W = 2.2;
+    const planks = Math.floor(len / 0.32);
+    const pg = new THREE.BoxGeometry(W, 0.06, 0.29);
+    const deck = new THREE.InstancedMesh(pg, wood, planks);
+    const m = new THREE.Matrix4();
+    for (let i = 0; i < planks; i++) {
+      m.makeRotationY((Math.sin(i * 7.1) * 0.01));
+      m.setPosition(Math.sin(i * 3.3) * 0.03, deckY - 0.03 + Math.sin(i * 5.7) * 0.008, z0 + 0.16 + i * 0.32);
+      deck.setMatrixAt(i, m);
+    }
+    deck.castShadow = true; deck.receiveShadow = true;
+    g.add(deck);
+    for (const x of [-W / 2 + 0.15, W / 2 - 0.15]) {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.18, len), dark);
+      beam.position.set(x, deckY - 0.15, z0 + len / 2); g.add(beam);
+    }
+    for (let z = z0 + 0.3; z < z0 + len; z += 2.4) {
+      for (const x of [-W / 2 + 0.1, W / 2 - 0.1]) {
+        const ground = this.terrain ? Math.min(heightAt(this.terrain, x, z), 0) : -2;
+        const h = deckY - ground + 0.6;
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.11, h, 10), dark);
+        post.position.set(x, deckY - h / 2 + 0.05, z); post.castShadow = true; g.add(post);
+      }
+    }
+    return g;
+  }
+
+  // Felsplatte unter dem Angler (unregelmäßiger Block mit Felstextur)
+  ledge(top, z) {
+    const g = new THREE.BoxGeometry(3.2, 3, 4.2, 10, 3, 12);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i);
+      const y = p.getY(i);
+      const zz = p.getZ(i);
+      const n = Math.sin(x * 3.1 + zz * 1.7) * 0.12 + Math.sin(x * 7.3 - zz * 5.1) * 0.05;
+      if (y > 1.4) p.setY(i, 1.5 + (Math.abs(x) > 1.2 || Math.abs(zz) > 1.8 ? n - 0.12 : n * 0.25)); // Oberseite fast flach
+      else { p.setX(i, x * (1 + n)); p.setZ(i, zz * (1 + n)); }
+    }
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+      map: tex('rock_diff.jpg', { repeat: 2 }), normalMap: tex('rock_nor.jpg', { srgb: false, repeat: 2 }), color: 0xc8c0b0, roughness: 0.92,
+    }));
+    m.position.set(0, top - 1.5, z - 0.9);
+    m.castShadow = true; m.receiveShadow = true;
+    return m;
+  }
+
+  // Hafen: Kaimauer aus Naturstein mit Pflaster, Poller, festgemachte Boote, Laternen
+  async addHarbour() {
+    const s = this.scene;
+    const t = this.terrain;
+    // Kaikante dort, wo vor dem Angler das Wasser beginnt
+    let edge = 0;
+    if (t) while (edge < 20 && heightAt(t, 0, edge + 0.5) > 0) edge += 0.25;
+    const top = 1.25;
+    const stone = new THREE.MeshStandardMaterial({ map: tex('rock_diff.jpg', { repeat: 6 }), normalMap: tex('rock_nor.jpg', { srgb: false, repeat: 6 }), color: 0xd8ccb4, roughness: 0.9 });
+    const paving = new THREE.MeshStandardMaterial({ map: tex('pebbles_diff.jpg', { repeat: 10 }), color: 0xbfb5a2, roughness: 0.95 });
+    const quay = new THREE.Mesh(new THREE.BoxGeometry(60, top + 4, 14), [stone, stone, paving, stone, stone, stone]);
+    quay.position.set(0, (top - 4) / 2, edge - 7);
+    quay.receiveShadow = true; quay.castShadow = true;
+    s.add(quay);
+    // Kantensteine
+    const kerb = new THREE.Mesh(new THREE.BoxGeometry(60, 0.18, 0.5), new THREE.MeshStandardMaterial({ map: tex('rock_diff.jpg', { repeat: 3 }), color: 0xe8e0d0, roughness: 0.8 }));
+    kerb.position.set(0, top + 0.05, edge - 0.25); kerb.castShadow = true; kerb.receiveShadow = true;
+    s.add(kerb);
+    // Poller
+    const iron = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.5, metalness: 0.6 });
+    for (const x of [-12, -5, 6, 13]) {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.45, 12), iron);
+      b.position.set(x, top + 0.3, edge - 0.6); b.castShadow = true; s.add(b);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 8), iron);
+      cap.position.set(x, top + 0.55, edge - 0.6); cap.scale.y = 0.6; s.add(cap);
+    }
+    // festgemachte Boote (bunt, wie die Fischerboote im Hafen von Torri)
+    const colors = [0x2a6ad1, 0xd8402a, 0x2a8a5a, 0xe8c23a, 0xf2f2ee];
+    const spots = [[-9, 3.2, 0.15], [-15, 3.5, -0.1], [10, 3.0, 0.05], [16, 3.6, -0.15], [-4, 9, 1.4]];
+    this.moored = [];
+    spots.forEach(([x, dz, rot], i) => {
+      const b = createBoat(colors[i % colors.length]);
+      b.position.set(x, 0, edge + dz);
+      b.rotation.y = Math.PI / 2 + rot;
+      s.add(b);
+      this.moored.push(b);
+    });
+    // Laternen auf der Kaimauer
+    for (const x of [-18, -7, 12]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.6, 8), iron);
+      pole.position.set(x, top + 1.8, edge - 1.0); pole.castShadow = true; s.add(pole);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), new THREE.MeshStandardMaterial({ color: 0xfff2c8, emissive: 0xffd080, emissiveIntensity: this.night ? 3 : 0.2 }));
+      lamp.position.set(x, top + 3.7, edge - 1.0); s.add(lamp);
+      if (this.night) { const l = new THREE.PointLight(0xffc070, 4, 16, 2); l.position.copy(lamp.position); s.add(l); }
+    }
+    this.base.set(0, top, edge - 0.9);
+    const bucket = (await glb('wooden_bucket_01')).clone(true);
+    bucket.position.set(0.8, top, edge - 1.5);
+    bucket.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+    s.add(bucket);
   }
 
   ripple(x, z, strength = 1) {
@@ -449,6 +642,7 @@ export class FishingScene {
       this.boat.rotation.x = Math.sin(t * 0.7 + 1) * 0.015 * w;
       this.boat.position.y = Math.sin(t * 1.1) * 0.04 * w;
     }
+    if (this.moored) this.moored.forEach((b, i) => { b.position.y = Math.sin(t * 0.9 + i) * 0.03; b.rotation.z = Math.sin(t * 0.7 + i * 2) * 0.02; });
     for (let i = 0; i < this.splashLife.length; i++) {
       if (this.splashLife[i] <= 0) { this.splashPos[i * 3 + 1] = -50; continue; }
       this.splashLife[i] -= dt;
@@ -481,9 +675,12 @@ export class FishingScene {
       want = base.clone().addScaledVector(fwd, 2.4).addScaledVector(left, -0.5).add(new THREE.Vector3(0, 1.45, 0));
       look = base.clone().add(new THREE.Vector3(0, 1.2, 0)).addScaledVector(fwd, 0.3);
     } else {
-      const back = this.camMode === 'fight' ? 3.0 : 3.4;
-      want = base.clone().addScaledVector(fwd, -back).addScaledVector(left, 1.5).add(new THREE.Vector3(0, 2.5, 0));
-      look = this.camTarget.clone().setY(Math.min(0, this.camTarget.y)).lerp(base.clone().add(new THREE.Vector3(0, 1, 0)), 0.35);
+      // über die Schulter, Blick flach Richtung Horizont: Wasser unten, Ufer/Berge/Orte oben im Bild
+      const back = this.camMode === 'fight' ? 3.2 : 3.8;
+      want = base.clone().addScaledVector(fwd, -back).addScaledVector(left, 1.3).add(new THREE.Vector3(0, 2.1, 0));
+      const tgt = this.camTarget.clone().setY(0);
+      const ahead = base.clone().addScaledVector(fwd, 60).setY(base.y + 4);
+      look = tgt.lerp(ahead, this.camMode === 'fight' ? 0.35 : 0.6);
     }
     const cut = this.camMode !== this._lastMode && (this.camMode === 'catch' || this._lastMode === 'catch');
     this._lastMode = this.camMode;

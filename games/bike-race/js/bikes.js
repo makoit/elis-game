@@ -3,11 +3,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { TIRE_WALL_COLORS } from './bikedata.js';
 import { UP, v3, _m, _q, _one, clamp, smooth, prof, loft, line, spline, Bucket, canvasTex, hex, hash01 } from './geom.js';
 import { buildMoto, MOTO_GEOM, MOTO_POSES } from './motos.js';
+import { riderReady, buildRider } from './rider.js';
 
 // Prozedurales, detailliertes Fahrradmodell mit Fahrer. Alle statischen Teile werden je Material zu EINEM Mesh
 // zusammengefasst (wenige Draw-Calls, wichtig fürs Tablet). Nur Räder, Kurbel und Beine bewegen sich.
 // Koordinaten: y oben, vorn = -z, Raddachse entlang x. Einheit Meter.
 //
+// Ist das Menschenmodell geladen (rider.js), sitzt dieser Fahrer auf dem Rad; Helm, Brille und Haare unter dem Helm kommen
+// trotzdem von hier. Sonst (offline, Ladefehler, opts.builtRider) wird der Fahrer gebaut:
 // Der Fahrer besteht aus "Lofts": glatten Körpern, deren Querschnitte (Superellipsen) entlang einer Kurve
 // mit einem anatomischen Profil (Breite/Tiefe/Versatz je Höhe) gezogen werden. Die Beine sind EIN
 // SkinnedMesh (Hüfte → Knie → Knöchel je Bein, Vertex-Farben für Hose/Haut/Socke/Schuh) = 1 Draw-Call.
@@ -512,6 +515,14 @@ export function createBike(def, opts = {}) {
   const s0 = 0.19;
   const torsoFn = (s) => prof(TORSO_P, s);
   const tOpt = { s0, ref: chest, nT, nR, ex: 2.3 };
+  const RM = riderReady() && !opts.builtRider ? buildRider({
+    group, hip: hipC, grips: [v3(-grip.x, grip.y, grip.z), v3(grip.x, grip.y, grip.z)], gripR,
+    reachK: moto ? { superbike: 0.5, naked: 0.72, enduro: 0.78, dirt: 0.74 }[L.moto] : clamp(PZ.reach / 0.66, 0.66, 0.92), pelvis: moto ? 0.12 : roadKit ? 0.32 : F === FRAMES.dh ? 0.14 : 0.22, curve: PZ.curv * 3,
+    pole: PZ.pole, pitch: 0.14 + PZ.pitch * 0.5, kneeOut: moto ? 0.55 : 0.12,
+    jerseyTex, numTex, kind: moto ? 'moto' : roadKit ? 'road' : 'baggy', longSleeve: !roadKit,
+    colors: { skin: RD.skin, shorts: col.shorts, shoes: col.shoes, glove: 0x1c1c20, boot: col.shoes },
+  }) : null;
+  if (!RM) {
   // Hose (Bib) unten, Trikot oben (etwas weiter, MTB lockerer)
   const hem = roadKit ? 0.03 : 0.0;
   B.put('shorts', loft(spine, torsoFn, { ...tOpt, a: -0.172, b: hem + 0.04, nT: Math.round(nT * 0.45), ends: 0.75, grow: roadKit ? 0.002 : 0.007 }));
@@ -528,6 +539,7 @@ export function createBike(def, opts = {}) {
     m.castShadow = false;
     group.add(m);
   }
+  }
 
   // ----- Hals + Kopf -----
   const neckBase = sp(0.6, -0.005);
@@ -535,13 +547,13 @@ export function createBike(def, opts = {}) {
   const neckTop = neckBase.clone().addScaledVector(nd, 0.115);
   const headQ = new THREE.Quaternion().setFromAxisAngle(v3(1, 0, 0), -PZ.pitch);
   const HC = neckTop.clone().add(v3(0, 0.07, -0.03).applyQuaternion(headQ));
-  const headM = new THREE.Matrix4().compose(HC, headQ, v3(1.06, 1.06, 1.06));
+  const headM = RM ? RM.headM : new THREE.Matrix4().compose(HC, headQ, v3(1.06, 1.06, 1.06));
   const neckFn = (s) => [0.055 - s * 0.03, 0.058 - s * 0.03, 0.004];
   const neckA = neckBase.clone().addScaledVector(nd, -0.04), neckB = HC.clone().add(v3(0, -0.02, 0.025).applyQuaternion(headQ));
-  B.put('skin', loft(line(neckA, neckB), neckFn, { a: 0, b: neckA.distanceTo(neckB), s0: 0, ref: v3(0, -nd.z, nd.y).negate(), nT: low ? 3 : 6, nR: low ? 8 : 14 }));
+  if (!RM) B.put('skin', loft(line(neckA, neckB), neckFn, { a: 0, b: neckA.distanceTo(neckB), s0: 0, ref: v3(0, -nd.z, nd.y).negate(), nT: low ? 3 : 6, nR: low ? 8 : 14 }));
   B.xf = headM; // ab hier: Kopf-lokale Koordinaten (y oben, −z Gesicht)
-  B.put('skin', loft(line(v3(0, -0.13, 0), v3(0, 0.13, 0)), (s) => prof(HEAD_P, s - 0.13), { a: 0.005, b: 0.258, s0: 0, ref: v3(0, 0, -1), nT: low ? 10 : 24, nR: low ? 10 : 20, ex: 2.15, ends: 0.5 }));
-  if (!low) {
+  if (!RM) B.put('skin', loft(line(v3(0, -0.13, 0), v3(0, 0.13, 0)), (s) => prof(HEAD_P, s - 0.13), { a: 0.005, b: 0.258, s0: 0, ref: v3(0, 0, -1), nT: low ? 10 : 24, nR: low ? 10 : 20, ex: 2.15, ends: 0.5 }));
+  if (!low && !RM) { // Gesicht (das Modell hat ein eigenes)
     B.ell('skin', v3(0, -0.006, -0.095), 0.0095, 0.024, 0.014, -0.4, 8); // Nase
     B.ell('skin', v3(0, -0.026, -0.097), 0.014, 0.0075, 0.009, 0, 8); // Nasenflügel
     B.ell('dark', v3(0, -0.056, -0.093), 0.019, 0.0035, 0.006, 0, 6); // Mund
@@ -557,8 +569,8 @@ export function createBike(def, opts = {}) {
   // Haare (unter dem Helm sichtbar)
   const hs = RD.hairStyle;
   if (hs !== 'none') {
-    B.ell('hair', v3(0, 0.02, 0.012), 0.081, 0.088, 0.1, 0, low ? 8 : 12);
-    if (!low) for (const sx of [-1, 1]) B.ell('hair', v3(sx * 0.07, 0.0, -0.035), 0.008, 0.025, 0.014, 0, 6); // Koteletten
+    if (!RM) B.ell('hair', v3(0, 0.02, 0.012), 0.081, 0.088, 0.1, 0, low ? 8 : 12);
+    if (!low && !RM) for (const sx of [-1, 1]) B.ell('hair', v3(sx * 0.07, 0.0, -0.035), 0.008, 0.025, 0.014, 0, 6); // Koteletten
     if (hs === 'pony') { B.ell('hair', v3(0, -0.02, 0.1), 0.026, 0.024, 0.024, 0, 6); B.curve('hair', [v3(0, -0.025, 0.112), v3(0, -0.06, 0.15), v3(0, -0.13, 0.17)], 0.02, 8, 6); B.ell('hair', v3(0, -0.14, 0.17), 0.016, 0.03, 0.014, 0.3, 6); }
     else if (hs === 'long') { // fällt unter dem Helm über den Nacken
       const lh = line(v3(0, 0.0, 0.075), v3(0, -0.24, 0.2));
@@ -650,7 +662,7 @@ export function createBike(def, opts = {}) {
     return a.clone().addScaledVector(ac, l1 * cA).addScaledVector(pp, l1 * Math.sqrt(Math.max(0, 1 - cA * cA)));
   };
   const armFn = (s) => prof(ARM_P, s);
-  for (const sx of [-1, 1]) {
+  if (!RM) for (const sx of [-1, 1]) {
     const Sj = sp(0.525, -0.012).add(v3(sx * SHX, 0, 0));
     const G = v3(sx * grip.x, grip.y, grip.z);
     const W = G.clone().addScaledVector(Sj.clone().sub(G).normalize(), 0.075).add(v3(0, 0.012, 0));
@@ -867,6 +879,20 @@ export function createBike(def, opts = {}) {
   // ----- Beine (animiert): EIN SkinnedMesh, je Bein Hüfte → Knie → Knöchel -----
   // =====================================================================================
   const HX = moto ? 0.13 : 0.105; // Motorrad: Knie seitlich am Tank
+  let pose;
+  if (RM) {
+    pose = (crank) => {
+      RM.update();
+      if (moto) { for (const sx of [-1, 1]) RM.placeLeg(sx, sx * HX, MP.peg.y, MP.peg.z, -0.06); return; }
+      crankG.rotation.x = -crank;
+      pedals[0].rotation.x = crank;
+      pedals[1].rotation.x = crank;
+      for (const sx of [-1, 1]) {
+        const a = crank + (sx > 0 ? 0 : Math.PI);
+        RM.placeLeg(sx, sx * HX, bb.y + Math.cos(a) * CR, bb.z - Math.sin(a) * CR, -(0.17 + 0.11 * Math.sin(a - Math.PI / 2)));
+      }
+    };
+  } else {
   const legMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0 });
   const legParts = [];
   const cl = (h) => new THREE.Color(h);
@@ -977,7 +1003,7 @@ export function createBike(def, opts = {}) {
   const legs = [-1, 1].map((sx, i) => ({ sx, hip: bones[i * 3], knee: bones[i * 3 + 1], ankle: bones[i * 3 + 2] }));
 
   const ankOff = v3(0, soleBot + 0.009, 0.115); // Knöchel relativ zur Pedalachse (Fuß-Bezug)
-  function pose(crank) {
+  pose = (crank) => {
     if (moto) { // Füße stehen auf den Fußrasten
       for (const l of legs) placeLeg(l, MP.peg.y, MP.peg.z, -0.06);
       return;
@@ -989,7 +1015,7 @@ export function createBike(def, opts = {}) {
       const a = crank + (l.sx > 0 ? 0 : Math.PI);
       placeLeg(l, bb.y + Math.cos(a) * CR, bb.z - Math.sin(a) * CR, -(0.17 + 0.11 * Math.sin(a - Math.PI / 2))); // Fußneigung (Spitze unten), "Ankle-Pedaling"
     }
-  }
+  };
   // Bein-IK: Fußballen auf (py, pz), Fußneigung fp
   function placeLeg(l, py, pz, fp) {
     const c = Math.cos(fp), s = Math.sin(fp);
@@ -1008,6 +1034,7 @@ export function createBike(def, opts = {}) {
     l.hip.rotation.x = th1;
     l.knee.rotation.x = th2 - th1;
     l.ankle.rotation.x = fp - th2;
+  }
   }
   pose(0);
 

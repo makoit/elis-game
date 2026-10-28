@@ -1920,12 +1920,13 @@ export function buildTrackMesh(track, quality = 'high') {
   return { group, rockMeshes, padMeshes, update: gardaFx ? gardaFx.update : null };
 }
 
+// Gibt Geometrien, Materialien und Farbtexturen frei – außer geteilten (userData.shared: geladene Modelle, Fahrer-Teile)
 export function disposeObject(root) {
   root.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
+    if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
     if (o.material) {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
-      mats.forEach((mt) => { if (mt.map) mt.map.dispose(); mt.dispose(); });
+      mats.forEach((mt) => { if (mt.userData.shared) return; if (mt.map && !mt.map.userData.shared) mt.map.dispose(); mt.dispose(); });
     }
   });
 }

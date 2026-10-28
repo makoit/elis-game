@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Entwickler-Ansicht für das Radmodell: tools/bikeview.html?cat=road&brand=velocita&angle=40 -->
+<!-- Entwickler-Ansicht für das Radmodell: tools/bikeview.html?cat=road&brand=velocita&angle=40 (&built = gebauter Fahrer statt Modell) -->
 <html><head><meta charset="utf-8"><style>body{margin:0;background:#24324f}canvas{display:block}</style>
 <script type="importmap">{"imports":{"three":"../../../vendor/three.module.js","three/addons/":"../../../vendor/addons/"}}</script></head>
 <body><script type="module">
@@ -7,6 +7,9 @@ import * as THREE from 'three';
 import { createBike } from '../js/bikes.js';
 import { resolveBike, DEFAULT_CONFIG } from '../js/bikedata.js';
 import { createEnvMap } from '../js/env.js';
+import { preloadModels } from '../js/assets.js';
+if (!q0().has('built')) await preloadModels();
+function q0() { return new URLSearchParams(location.search); }
 const q = new URLSearchParams(location.search);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
@@ -15,12 +18,12 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x3a4a6e);
 scene.environment = createEnvMap(renderer, { top: 0x2a4a86, horizon: 0xcfe3ff, ground: 0x20283f, sunDir: new THREE.Vector3(0.6, 0.5, 0.7) });
 const key = new THREE.DirectionalLight(0xfff2dd, 2.4); key.position.set(3, 5, 4); scene.add(key);
 const def = resolveBike({ ...DEFAULT_CONFIG, cat: q.get('cat') || 'trail', brand: q.get('brand') || 'alpina', jersey: 0xff8a1f });
-const bike = createBike(def, { lod: q.get('lod') });
+const bike = createBike(def, { lod: q.get('lod'), builtRider: q.has('built') });
 bike.pose(Number(q.get('crank') || 0.6)); bike.spin(1);
 scene.add(bike.group);
 const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 50);
-const a = (Number(q.get('angle') || 50)) * Math.PI / 180;
-cam.position.set(Math.sin(a) * 3.2, 1.2, Math.cos(a) * 3.2); cam.lookAt(0, 0.7, 0);
+const a = (Number(q.get('angle') || 50)) * Math.PI / 180, dist = Number(q.get('dist') || 3.2), ty = Number(q.get('y') || 0.7);
+cam.position.set(Math.sin(a) * dist, ty + 0.5, Math.cos(a) * dist); cam.lookAt(0, ty, 0);
 renderer.render(scene, cam);
 document.title = 'done ' + renderer.info.render.calls + ' calls ' + renderer.info.render.triangles + ' tris';
 </script></body></html>

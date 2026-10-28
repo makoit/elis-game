@@ -3,7 +3,7 @@ import { buildTrack, mulberry32 } from './trackdata.js';
 import { BikeSim, collideRiders, SPEED_SCALE, G } from './physics.js';
 import { createBike } from './bikes.js';
 import { buildTrackMesh, disposeObject } from './trackmesh.js';
-import { createSky, createEnvMap, createMountains, createClouds, createStars } from './env.js';
+import { createSky, createEnvMap, createPhotoSky, createPhotoEnvMap, createMountains, createClouds, createStars } from './env.js';
 import { createCrowd } from './crowd.js';
 import { music } from './music.js';
 import { starTimes } from './autopilot.js';
@@ -26,7 +26,7 @@ export function formatTime(t) {
 }
 
 export class Race {
-  // opts: renderer, bikeDef, map, input, hud, quality, mode ('solo' | 'vs'), level (AI), onFinish,
+  // opts: renderer, bikeDef, map, input, hud, quality, mode ('solo' | 'vs'), level (AI), onFinish, sky (Himmelsfoto aus assets.loadSky, optional),
   //       brakeAssist (bremst vor zu schnellen Kurven), speedLimit (m/s, nur Motorräder), camDist (Faktor)
   constructor(o) {
     Object.assign(this, { renderer: o.renderer, map: o.map, input: o.input, hud: o.hud, onFinish: o.onFinish, quality: o.quality, mode: o.mode });
@@ -50,14 +50,17 @@ export class Race {
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(c.fog, map.fogRange[0], map.fogRange[1]);
     const skyOpts = { top: c.sky, horizon: c.fog, ground: c.grass, sunDir: SUN_DIR };
-    if (!envCache.has(map.id)) envCache.set(map.id, createEnvMap(o.renderer, skyOpts));
-    this.scene.environment = envCache.get(map.id);
+    // Himmelsfoto (mit Wolken bzw. Sternen) + Umgebungslicht daraus; sonst Farbverlauf mit gemalten Wolken
+    const photo = o.sky;
+    const envKey = map.id + (photo ? ':photo' : '');
+    if (!envCache.has(envKey)) envCache.set(envKey, photo ? createPhotoEnvMap(o.renderer, photo, SUN_DIR) : createEnvMap(o.renderer, skyOpts));
+    this.scene.environment = envCache.get(envKey);
     this.scene.environmentIntensity = light.env;
-    this.sky = createSky(skyOpts);
+    this.sky = photo ? createPhotoSky(photo, SUN_DIR) : createSky(skyOpts);
     this.mountains = createMountains(new THREE.Color(c.fog).lerp(new THREE.Color(c.grass), 0.35).getHex(), map.seed);
-    this.clouds = createClouds(12, map.seed);
-    this.scene.add(this.sky, this.mountains, this.clouds);
-    if (map.stars) { this.stars3d = createStars(map.seed); this.scene.add(this.stars3d); }
+    this.scene.add(this.sky, this.mountains);
+    if (!photo) { this.clouds = createClouds(12, map.seed); this.scene.add(this.clouds); }
+    if (map.stars && !photo) { this.stars3d = createStars(map.seed); this.scene.add(this.stars3d); }
     this.scene.add(new THREE.HemisphereLight(new THREE.Color(c.sky).lerp(new THREE.Color(0xffffff), 0.65), new THREE.Color(c.grass).lerp(new THREE.Color(0x888888), 0.5), light.hemi));
     this.sun = new THREE.DirectionalLight(light.sun, light.sunI);
     this.scene.add(this.sun, this.sun.target);

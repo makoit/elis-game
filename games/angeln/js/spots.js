@@ -1,6 +1,7 @@
 // Gewässer und Angelplätze. Koordinaten sind echte Orte (WGS84), die Umrisse kommen aus geo.js (OpenStreetMap).
 // fish: Bestand am Platz (0..5, höher = mehr Fische). depth: Wassertiefe in m (fürs Echolot und die Optik).
 // boat: Platz wird vom Boot aus beangelt. level: ab welcher Stufe der Ausflug in der Karriere frei ist.
+// view: Start-Blickrichtung (rad, negativ = nach rechts), z. B. damit die Brücke im Bild ist.
 // scene: Aussehen der 3D-Szene (Wasserfarbe, Ufer, Berge, Strömung, Wahrzeichen). Ein Spot kann mit `landmark` ein eigenes Wahrzeichen setzen.
 
 export const WATERS = [
@@ -26,6 +27,9 @@ export const WATERS = [
       { id: 'mincio', name: 'Mincio-Ausfluss', place: 'Peschiera del Garda', lat: 45.44050, lon: 10.69050, depth: 4,
         fish: { doebel: 3, karpfen: 3, wels: 2, aal: 2, barsch: 2 },
         text: 'An den alten Festungsmauern verlässt der Mincio den See. Hier lauern sogar Welse.' },
+      { id: 'torri', name: 'Hafen Torri del Benaco', place: 'Torri del Benaco', lat: 45.609, lon: 10.6849, depth: 8, harbour: true,
+        fish: { barsch: 4, doebel: 3, forelle: 2, hecht: 1, aal: 1, karpfen: 1 },
+        text: 'Auf der Hafenmauer unter der Skaligerburg: Barsche stehen zwischen den Fischerbooten, abends ziehen Seeforellen vorbei.' },
       { id: 'garda-boot', name: 'Seemitte vor Torri', place: 'Boot', lat: 45.62, lon: 10.655, depth: 180, boat: true,
         fish: { forelle: 3, barsch: 3, hecht: 1 },
         text: 'Mit dem Boot aufs tiefe Wasser: Hier ziehen große Seeforellen ihre Bahnen.' },
@@ -94,7 +98,7 @@ export const WATERS = [
       { name: 'Fehmarnsund', lat: 54.398, lon: 11.112 }, { name: 'Staberhuk', lat: 54.403, lon: 11.31 }, { name: 'Orth', lat: 54.448, lon: 11.05 },
     ],
     spots: [
-      { id: 'sundbruecke', name: 'Fehmarnsundbrücke', place: 'Fehmarnsund', lat: 54.40314, lon: 11.12686, depth: 9, landmark: 'bridge',
+      { id: 'sundbruecke', name: 'Fehmarnsundbrücke', place: 'Fehmarnsund', lat: 54.40314, lon: 11.12686, depth: 9, landmark: 'bridge', view: -1.05,
         fish: { scholle: 3, forelle: 1, aal: 1 },
         text: 'Unter dem „Kleiderbügel“ strömt das Wasser durch den Sund – Plattfische liegen am Grund.' },
       { id: 'staberhuk', name: 'Steinküste Staberhuk', place: 'Staberhuk', lat: 54.40262, lon: 11.30523, depth: 4, landmark: 'lighthouse',

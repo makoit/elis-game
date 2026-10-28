@@ -21,7 +21,7 @@ darunter steht in einem Satz, was zu tun ist. ❓ öffnet die bebilderte Anleitu
 3. **Warten**: Pose wackelt erst (Zupfen – nicht drücken!). Spinnrute: Knopf halten = Köder einholen.
 4. **Anschlagen**: Knopf wird rot („JETZT TIPPEN!“) → tippen.
 5. **Drillen**: Knopf grün = halten und kurbeln; Knopf rot „LOSLASSEN!“ bei Flucht oder zu hoher Spannung. Blinkt ◀ oder ▶: diese Richtung halten.
-6. **Keschern**: automatisch, danach Fangfoto (der Angler hält den Fisch) – behalten oder zurücksetzen.
+6. **Keschern**: Der Fisch bleibt im Wasser, bis er an der Uferkante ist; dann holt ihn der Kescher im Bogen über Ufer, Steg und Steine heraus. Danach Fangfoto – behalten oder zurücksetzen.
 
 Ob etwas beißt, hängt ab von Fischbestand, Köder, Tiefe, Tageszeit und Wurfweite. Vom Boot zeigt das **Echolot**, wo Fische stehen.
 
@@ -58,7 +58,7 @@ Die Uferplätze liegen genau auf der echten Uferlinie.
 
 | Gewässer | Plätze | Fische |
 |---|---|---|
-| Gardasee 🇮🇹 | Sarca-Mündung (Torbole), Hafenmole Malcesine, Schilf bei Sirmione, Mincio-Ausfluss (Peschiera), 🚤 Seemitte vor Torri | Seeforelle, Barsch, Hecht, Karpfen, Döbel, Aal, Wels |
+| Gardasee 🇮🇹 | Sarca-Mündung (Torbole), Hafenmole Malcesine, Schilf bei Sirmione, Mincio-Ausfluss (Peschiera), Hafen Torri del Benaco (Kaimauer mit Fischerbooten), 🚤 Seemitte vor Torri | Seeforelle, Barsch, Hecht, Karpfen, Döbel, Aal, Wels |
 | Bodensee 🇩🇪🇦🇹🇨🇭 | Seerhein Konstanz, Schilfgürtel Reichenau, Argenmündung, Hafen Lindau, 🚤 Überlinger See | Äsche, Barsch, Hecht, Zander, Karpfen, Seeforelle, Seesaibling, Wels, Aal |
 | Donau – Wachau 🇦🇹 | Buhne Dürnstein, Hafen Spitz, Kremsmündung, 🚤 Strommitte Weißenkirchen | Nase, Döbel, Zander, Wels, Barsch, Äsche, Sterlet (Stör) |
 | Ostsee – Fehmarn 🇩🇪 | Fehmarnsundbrücke, Steinküste Staberhuk, Mole Burgtiefe, 🚤 Fehmarnbelt | Scholle, Meerforelle, Aal |

@@ -99,7 +99,7 @@ def leaves():
 
 
 # ---- Modelle (glTF 1k -> GLB mit 512er-Texturen) ----
-MODELS = ['fishermans_hat', 'rubber_boots', 'life_jacket', 'modular_wooden_pier', 'rock_moss_set_01',
+MODELS = ['fishermans_hat', 'rubber_boots', 'life_jacket', 'rock_moss_set_01',
           'wooden_bucket_01', 'folding_wooden_stool', 'Lantern_01']
 def models(size=512):
     import struct

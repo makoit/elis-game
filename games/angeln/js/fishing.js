@@ -16,7 +16,7 @@ export class Fishing {
     this.s = scene;
     this.o = opts; // { water, spot, rod, bait, depth, time, drag, onEvent, easy }
     this.state = 'ready';
-    this.aimYaw = 0;
+    this.aimYaw = opts.spot.view || 0;
     this.power = 0;
     this.lurePos = new THREE.Vector3();
     this.target = new THREE.Vector3();
@@ -26,6 +26,20 @@ export class Fishing {
   }
 
   emit(type, data) { this.o.onEvent?.(type, data); }
+
+  // Ab welcher Entfernung (in Richtung ang vom Angler aus) ist das Wasser tief genug für den Fisch?
+  waterEdge(ang) {
+    const b = this.s.anglerWorld();
+    for (let d = this.s.boat ? 2.7 : 0.8; d < 60; d += 0.4) { // vom Boot aus: erst vor dem Bug
+      if (this.s.groundAt(b.x + Math.sin(ang) * d, b.z + Math.cos(ang) * d) < -0.08) return d + 0.3;
+    }
+    return 60;
+  }
+
+  swimmable(ang, d) {
+    const b = this.s.anglerWorld();
+    return this.s.groundAt(b.x + Math.sin(ang) * d, b.z + Math.cos(ang) * d) < -0.06;
+  }
 
   // Köder relativ zum Standplatz (nur waagerecht)
   rel() { return new THREE.Vector3(this.lurePos.x - this.s.base.x, 0, this.lurePos.z - this.s.base.z); }
@@ -81,7 +95,7 @@ export class Fishing {
 
     if (st === 'ready') {
       const turn = (input.right ? -1 : 0) + (input.left ? 1 : 0);
-      this.aimYaw = Math.max(-0.8, Math.min(0.8, this.aimYaw + turn * dt * 0.9 + input.aimDelta));
+      this.aimYaw = Math.max(-1.3, Math.min(1.3, this.aimYaw + turn * dt * 0.9 + input.aimDelta));
       input.aimDelta = 0;
       // Auswerfen: halten = Rute nach hinten, je länger desto weiter (Zielring wandert mit); loslassen = Wurf
       if (input.action) {
@@ -97,7 +111,7 @@ export class Fishing {
       }
       const d = this.setTarget(this.charging ? this.power : this.lastPower ?? 0.5);
       s.aim.visible = true;
-      s.aim.position.set(this.target.x, 0.06, this.target.z);
+      s.aim.position.set(this.target.x, 0.08, this.target.z);
       const sc = 0.6 + d * 0.03;
       s.aim.scale.set(sc, sc, sc);
       s.aim.material.opacity = this.charging ? 1 : 0.7;
@@ -119,6 +133,11 @@ export class Fishing {
       this.lurePos.set(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u + Math.sin(u * Math.PI) * (4 + this.castDist * 0.15), a.z + (b.z - a.z) * u);
       this.showLure(true);
       s.setLine(this.lurePos, 0.05);
+      if (u >= 1 && s.groundAt(b.x, b.z) > -0.1) {
+        this.emit('msg', { text: '🌿 Das war ans Ufer geworfen – zieh den Ring aufs Wasser und versuch es nochmal!', kind: 'warn' });
+        this.reelIn();
+        return;
+      }
       if (u >= 1) {
         s.splashAt(b.x, b.z, 18, 0.6);
         sfx.plop();
@@ -241,14 +260,59 @@ export class Fishing {
     if (st === 'landing') {
       this.landT += dt;
       const f = this.fishMesh;
-      const u = Math.min(1, this.landT / 1.1);
-      const near = s.anglerWorld().add(new THREE.Vector3(Math.sin(s.angler.rotation.y) * 1.2, 0.6, Math.cos(s.angler.rotation.y) * 1.2));
-      f.position.lerpVectors(this.landFrom, near, u);
-      f.rotation.z = Math.sin(s.t * 12) * 0.3 * (1 - u) + 0.4;
+      const net = s.net;
+      const b = s.anglerWorld();
+      const yaw = s.angler.rotation.y;
+      const hand = b.clone().add(new THREE.Vector3(Math.sin(yaw) * 0.6, 1.1, Math.cos(yaw) * 0.6));
+      if (!this.landTo) {
+        // Bogenhöhe: höchster Punkt auf dem Weg (Ufer, Steine, Steg) plus Abstand
+        let top = Math.max(b.y + 1.4, 0.8);
+        for (let k = 0; k <= 10; k++) {
+          const p = this.landFrom.clone().lerp(hand, k / 10);
+          top = Math.max(top, s.groundAt(p.x, p.z) + 1.0);
+        }
+        this.landTo = hand;
+        this.landTop = top;
+      }
+      const T1 = 0.6; // Kescher taucht ein
+      const T2 = 0.9; // Fisch rutscht hinein
+      const T3 = 2.0; // Hochheben und heranholen
+      net.visible = true;
+      const reach = this.landFrom.clone().sub(b).setY(0);
+      if (reach.length() > 2.6) reach.setLength(2.6);
+      const inWater = b.clone().add(reach).setY(Math.min(-0.05, s.groundAt(b.x + reach.x, b.z + reach.z) + 0.05));
+      if (this.landT < T1) {
+        net.position.lerpVectors(hand, inWater, this.landT / T1);
+        f.position.lerpVectors(this.landFrom, inWater, this.landT / T1 * 0.6); // Fisch wird zum Kescher geführt
+        f.position.y = Math.max(-0.05, s.groundAt(f.position.x, f.position.z) + 0.08);
+        f.rotation.z = Math.sin(s.t * 14) * 0.4;
+      } else if (this.landT < T2) {
+        net.position.copy(inWater);
+        f.position.lerpVectors(this.landFrom, inWater.clone().add(new THREE.Vector3(0, 0.1, 0)), (this.landT - T1) / (T2 - T1));
+        f.position.y = Math.max(f.position.y, s.groundAt(f.position.x, f.position.z) + 0.08);
+        if (!this.scooped) { this.scooped = true; s.splashAt(inWater.x, inWater.z, 30, 0.8); sfx.splash(); }
+      } else {
+        const u = Math.min(1, (this.landT - T2) / (T3 - T2));
+        const e = u * u * (3 - 2 * u);
+        // quadratische Bézierkurve über das Hindernis
+        const p0 = inWater;
+        const p2 = this.landTo;
+        const p1 = p0.clone().lerp(p2, 0.5).setY(this.landTop * 2 - (p0.y + p2.y) / 2);
+        net.position.set(
+          (1 - e) * (1 - e) * p0.x + 2 * (1 - e) * e * p1.x + e * e * p2.x,
+          (1 - e) * (1 - e) * p0.y + 2 * (1 - e) * e * p1.y + e * e * p2.y,
+          (1 - e) * (1 - e) * p0.z + 2 * (1 - e) * e * p1.z + e * e * p2.z,
+        );
+        f.position.copy(net.position).add(new THREE.Vector3(0, 0.12, 0));
+        f.rotation.z = Math.sin(s.t * 16) * 0.25 * (1 - u);
+      }
+      net.lookAt(b.x, net.position.y + 0.3, b.z);
       animateFish(f, s.t, 2);
       s.setLine(f.position, 0);
-      bendRod(ud.rod, 0.3 * (1 - u));
-      if (u >= 1) {
+      bendRod(ud.rod, 0.3 * Math.max(0, 1 - this.landT / T3));
+      if (this.landT >= T3) {
+        net.visible = false;
+        this.scooped = false;
         this.state = 'caught';
         s.camMode = 'catch';
         // Fangfoto: Angler hält den Fisch mit beiden Händen
@@ -375,9 +439,13 @@ export class Fishing {
     if (reeling) dd -= (2.2 + rod.range * 0.03 + (this.o.easy ? 0.8 : 0)) * Math.max(0, 1 - slip * 0.3); // lange Ruten = große Rollen
     if (this.run > 0) dd += 1.6 * tired + slip * 1.2;
     else dd += 0.25 * tired;
-    this.dist = Math.max(0, this.dist + dd * dt);
+    // Der Fisch kann nur im Wasser schwimmen: nicht näher als die Uferkante, seitlich nicht aufs Land
+    const prevAng = this.fishAng;
     this.fishAng += (this.side * 0.25 * tired - this.fishAng * 0.05) * dt;
     this.fishAng = Math.max(-0.9, Math.min(0.9, this.fishAng));
+    this.edge = this.waterEdge(this.fishAng);
+    if (!this.swimmable(this.fishAng, Math.max(this.dist, this.edge))) { this.fishAng = prevAng; this.edge = this.waterEdge(prevAng); }
+    this.dist = Math.max(this.edge, this.dist + dd * dt);
 
     // Ausdauer sinkt durch Spannung, schneller wenn man gegenhält
     const weightK = 1 + Math.sqrt(this.hooked.kg) * 0.35 * f.power;
@@ -408,9 +476,9 @@ export class Fishing {
       fm.rotation.set(0, -Math.PI / 2 + this.fishAng, Math.sin(s.t * 20) * 0.6 + (u - 0.5) * 1.5);
       animateFish(fm, s.t, 3);
       if (this.jumpT <= 0) { fm.visible = false; s.splashAt(fx, fz, 30, 1); if (this.tension > 0.72 && Math.random() < 0.45) return this.lose('jump'); }
-    } else fm.visible = this.dist < 4;
+    } else fm.visible = this.dist < this.edge + 3;
     if (fm.visible && !(this.jumpT > 0)) {
-      fm.position.set(fx, -0.15, fz);
+      fm.position.set(fx, -0.06, fz); // Rücken knapp unter der Oberfläche
       fm.rotation.set(0, -Math.PI / 2 + this.fishAng + Math.sin(s.t * 4) * 0.4, 0);
       animateFish(fm, s.t, 2);
     }
@@ -434,10 +502,11 @@ export class Fishing {
       slack: this.slackT > 1.5, red: this.tension > 0.88,
     });
 
-    if (this.dist < 2.2) {
+    if (this.dist <= this.edge + 0.4) {
       this.state = 'landing';
       this.landT = 0;
       this.landFrom = fishPos;
+      this.landTo = null;
       fm.visible = true;
       s.shadowFish.visible = false;
       sfx.splash();

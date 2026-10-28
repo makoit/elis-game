@@ -110,7 +110,7 @@ export function createLure(bait) {
 }
 
 // ---------- Angelboot (GFK, Rumpf aus Spanten gelofted) ----------
-export function createBoat() {
+export function createBoat(color = 0xf2f2ee) {
   const g = new THREE.Group();
   const L = 4.6;
   const stations = 14;
@@ -143,7 +143,7 @@ export function createBoat() {
   hullGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   hullGeo.setIndex(idx);
   hullGeo.computeVertexNormals();
-  const hull = new THREE.Mesh(hullGeo, new THREE.MeshPhysicalMaterial({ color: 0xf2f2ee, roughness: 0.3, clearcoat: 0.8, side: THREE.DoubleSide }));
+  const hull = new THREE.Mesh(hullGeo, new THREE.MeshPhysicalMaterial({ color, roughness: 0.3, clearcoat: 0.8, side: THREE.DoubleSide }));
   hull.castShadow = true; hull.receiveShadow = true;
   g.add(hull);
   // Zierstreifen unter dem Dollbord
@@ -186,6 +186,24 @@ export function createBoat() {
   screen.position.set(0.5, 0.46, 1.276); screen.rotation.x = -0.4; g.add(screen);
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   g.userData.deckY = -0.06;
+  return g;
+}
+
+// Kescher: Alu-Stiel, Bügel und Netzsack. Ursprung = Bügelmitte, Stiel zeigt nach +z (zum Angler).
+export function createNet() {
+  const g = new THREE.Group();
+  const alu = std(0xb8bcc4, 0.3, 0.9);
+  const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 8, 40), alu);
+  hoop.rotation.x = Math.PI / 2; g.add(hoop);
+  const bag = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.45, 20, 4, true), new THREE.MeshStandardMaterial({
+    color: 0x1a2a1a, roughness: 0.9, wireframe: true, transparent: true, opacity: 0.7,
+  }));
+  bag.rotation.x = Math.PI; bag.position.y = -0.22; g.add(bag);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 1.8, 8), alu);
+  pole.rotation.x = Math.PI / 2; pole.position.z = 0.3 + 0.9; g.add(pole);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8), std(0x111111, 0.8));
+  grip.rotation.x = Math.PI / 2; grip.position.z = 1.95; g.add(grip);
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
 

@@ -11,6 +11,7 @@ import { Race, formatTime } from './race.js';
 import { input, initInput, resetInput, isTouchDevice, SENS } from './input.js';
 import { sfx } from './sfx.js';
 import { music } from './music.js';
+import { preloadModels, loadSky } from './assets.js';
 
 const $ = (id) => document.getElementById(id);
 const hexCss = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -70,6 +71,8 @@ applyQuality();
 
 const showroom = new Showroom(renderer);
 let race = null;
+// Modelle (Fahrer, Felsen, Baumstämme …) gleich beim Start laden; die Garage zeigt bis dahin den gebauten Fahrer
+const modelsReady = preloadModels().then(() => { if (!race && $('screen-garage').classList.contains('active')) showroom.setBike(currentDef()); });
 let paused = false;
 
 // ---- Screens ----
@@ -376,19 +379,27 @@ const hud = {
   lap: $('hud-lap'), lapText: $('hud-lap-text'), banner: $('banner'),
 };
 
-function startRace() {
+let starting = false;
+async function startRace() {
+  if (starting) return;
+  starting = true;
   sfx.unlock();
+  input.setMode(state.steer); // Neigung neu eichen (und ggf. iOS-Erlaubnis aus dem Tipp heraus erfragen) – noch im Tipp, vor dem Laden
+  const map = MAPS[state.map];
+  // Himmelsfoto der Strecke und Modelle laden (beim ersten Mal ein paar Sekunden, danach aus dem Speicher)
+  $('loading').classList.add('show');
+  const [sky] = await Promise.all([qs.get('sky') === '0' ? null : loadSky(map.id), modelsReady]); // ?sky=0: Farbverlauf-Himmel (Vergleich)
+  $('loading').classList.remove('show');
+  starting = false;
   if (race) race.dispose();
   resetInput();
-  input.setMode(state.steer); // Neigung neu eichen (und ggf. iOS-Erlaubnis aus dem Tipp heraus erfragen)
   paused = false;
   $('countdown').classList.remove('show');
   applyQuality();
   const level = LEVELS.find((l) => l.id === state.level) || LEVELS[1];
-  const map = MAPS[state.map];
   const bikeDef = currentDef();
   race = new Race({
-    renderer, bikeDef, map, laps: lapsOf(map), input, hud, quality: effectiveQuality(),
+    renderer, bikeDef, map, laps: lapsOf(map), input, hud, quality: effectiveQuality(), sky,
     mode: state.mode, level, onFinish: finishRace, bot: qs.has('bot'),
     brakeAssist: state.brakeAssist === 'all' || (state.brakeAssist === 'moto' && bikeDef.moto),
     speedLimit: LIMITS[state.speedLimit] || 0, camDist: CAMS[state.cam] || 1,
@@ -507,8 +518,9 @@ show('screen-mode');
 if (qs.get('screen') === 'garage') { renderGarage(); show('screen-garage'); }
 if (qs.get('screen') === 'map') { renderMapScreen(); show('screen-map'); }
 if (qs.get('screen') === 'settings') { renderSettings(); show('screen-settings'); }
-if (qs.has('start')) startRace();
-if (race && qs.has('warp')) for (let i = 0; i < Number(qs.get('warp')) * 60; i++) race.update(1 / 60); // Debug: Zeit vorspulen
+if (qs.has('start')) {
+  startRace().then(() => { if (race && qs.has('warp')) for (let i = 0; i < Number(qs.get('warp')) * 60; i++) race.update(1 / 60); }); // Debug: Zeit vorspulen
+}
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
