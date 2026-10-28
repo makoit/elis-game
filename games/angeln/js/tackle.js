@@ -90,6 +90,32 @@ function fly(color) {
   return g;
 }
 
+// Popper: kurzer Körper mit hohlem Maul, das an der Oberfläche spritzt
+function popper(color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(lathe([[0, 0], [0.006, 0.004], [0.009, 0.02], [0.011, 0.05], [0.009, 0.055], [0.006, 0.052]], 16), phys(color));
+  body.rotation.x = Math.PI / 2; body.position.z = -0.03; g.add(body);
+  const back = new THREE.Mesh(new THREE.SphereGeometry(0.0085, 12, 8), phys(0x1a5aa8));
+  back.scale.set(0.9, 0.5, 3.2); back.position.set(0, 0.004, 0.0); g.add(back);
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.0028, 8, 6), std(0xffd23a, 0.2)); e.position.set(s * 0.008, 0.002, 0.016); g.add(e); }
+  return g;
+}
+
+// Pilker: schwerer, länglicher Metallköder mit Drilling
+function pilker(color) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.09, 6), std(color, 0.15, 1));
+  body.rotation.x = Math.PI / 2; body.scale.set(1.4, 0.6, 1); g.add(body);
+  const tape = new THREE.Mesh(new THREE.CylinderGeometry(0.0062, 0.0062, 0.025, 6), std(0xff3a6a, 0.3, 0.4));
+  tape.rotation.x = Math.PI / 2; tape.scale.set(1.45, 0.62, 1); tape.position.z = -0.02; g.add(tape);
+  const wire = std(0xc8ccd2, 0.2, 1);
+  for (let i = 0; i < 3; i++) {
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.005, 0.0008, 4, 10, Math.PI * 1.4), wire);
+    hook.position.z = -0.05; hook.rotation.z = (i * Math.PI * 2) / 3; hook.rotation.y = Math.PI / 2; g.add(hook);
+  }
+  return g;
+}
+
 // Köder am Haken: Kunstköder als Modell, Naturköder als kleiner Körper (Wurm/Made/Mais …)
 export function createLure(bait) {
   let g;
@@ -98,7 +124,9 @@ export function createLure(bait) {
     case 'blinker': g = spoon(0xe8c23a); break;
     case 'wobbler': g = wobbler(0x7ab84a); break;
     case 'gummi': g = softbait(0xd8ff3a); break;
-    case 'fliege': case 'nymphe': g = fly(bait.id === 'fliege' ? 0x5a4a3a : 0x3a4a2a); break;
+    case 'fliege': case 'nymphe': case 'kaefer': g = fly(bait.color); break;
+    case 'popper': g = popper(0xf4f4f0); break;
+    case 'pilker': g = pilker(0xc8d0d8); break;
     default: {
       g = new THREE.Group();
       const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.004, 0.03, 4, 8), std(bait.color, 0.6));
@@ -185,6 +213,25 @@ export function createBoat(color = 0xf2f2ee) {
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.11), new THREE.MeshBasicMaterial({ color: 0x2a7ac8 }));
   screen.position.set(0.5, 0.46, 1.276); screen.rotation.x = -0.4; g.add(screen);
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  // Unsichtbarer Deckel auf der Bordkante: markiert im Stencil-Puffer, wo man in den Rumpf schaut –
+  // dort zeichnet das Wasser nicht (sonst stünde der Boden unter Wasser).
+  const cap = [];
+  const capIdx = [];
+  for (let i = 0; i <= stations; i++) {
+    const t = i / stations;
+    const w = Math.max(0.02, halfW(t));
+    cap.push(-w, sheer(t), -L / 2 + t * L, w, sheer(t), -L / 2 + t * L);
+    if (i < stations) capIdx.push(i * 2, i * 2 + 2, i * 2 + 1, i * 2 + 1, i * 2 + 2, i * 2 + 3);
+  }
+  const capGeo = new THREE.BufferGeometry();
+  capGeo.setAttribute('position', new THREE.Float32BufferAttribute(cap, 3));
+  capGeo.setIndex(capIdx);
+  const mask = new THREE.Mesh(capGeo, new THREE.MeshBasicMaterial({
+    colorWrite: false, depthWrite: false, side: THREE.DoubleSide,
+    stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp,
+  }));
+  mask.renderOrder = -1; // vor dem Wasser
+  g.add(mask);
   g.userData.deckY = -0.06;
   return g;
 }

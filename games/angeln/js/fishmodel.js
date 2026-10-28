@@ -15,6 +15,8 @@ const SHAPES = {
   catfish: { h: 0.085, w: 0.085, prof: (t) => (0.25 + 0.75 * Math.pow(t, 0.6)) * Math.pow(Math.sin(Math.PI * Math.min(0.98, 0.3 + t * 0.7)), 0.4), flatHead: true },
   grayling: { h: 0.12, w: 0.055, prof: (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.85)), 0.8) * (0.35 + 0.65 * Math.min(1, t * 1.8)) },
   sturgeon: { h: 0.08, w: 0.08, prof: (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.75)), 0.7) * (0.35 + 0.65 * Math.min(1, t * 1.6)), snout: 0.9 },
+  shark: { h: 0.11, w: 0.095, prof: (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.7)), 0.65) * (0.3 + 0.7 * Math.min(1, t * 1.6)), snout: 0.6 },
+  tuna: { h: 0.13, w: 0.095, prof: (t) => Math.pow(Math.sin(Math.PI * Math.pow(t, 1.15)), 0.75) },
 };
 
 const hash = (x, y, z) => {
@@ -128,8 +130,26 @@ function skinTextures(fishId, look) {
       }
     });
   }
-  // Seitenlinie
-  both((m) => {
+  if (look.waves != null) {
+    // Makrele: dunkle Wellenlinien auf dem Rücken
+    both((m) => {
+      g.strokeStyle = css(look.waves, 0.85); g.lineWidth = 7;
+      for (let i = 0; i < 26; i++) {
+        const u = 0.12 + i * 0.027;
+        g.beginPath(); g.moveTo(u * W, Y(0.01, m));
+        g.bezierCurveTo(u * W + 22, Y(0.07, m), u * W - 18, Y(0.12, m), u * W + 8, Y(0.2, m));
+        g.stroke();
+      }
+    });
+  }
+  if (shape === 'shark') {
+    // Kiemenspalten statt Kiemendeckel, keine Seitenlinie
+    both((m) => {
+      g.strokeStyle = 'rgba(20,30,40,0.45)'; g.lineWidth = 3;
+      for (let i = 0; i < 5; i++) { const x = (0.74 + i * 0.022) * W; g.beginPath(); g.moveTo(x, Y(0.17, m)); g.lineTo(x - 4, Y(0.31, m)); g.stroke(); }
+    });
+  } else both((m) => {
+    // Seitenlinie
     g.strokeStyle = 'rgba(30,30,30,0.35)'; g.lineWidth = 2;
     g.beginPath(); g.moveTo(0.12 * W, Y(0.24, m)); g.quadraticCurveTo(0.5 * W, Y(0.22, m), 0.82 * W, Y(0.17, m)); g.stroke();
     // Kiemendeckel
@@ -145,7 +165,7 @@ function skinTextures(fishId, look) {
   map.anisotropy = 4;
 
   // Schuppen-Normalmap (Halbkreis-Reihen), Karpfen grob, Aal/Wels glatt
-  const scaleSize = { carp: 26, salmon: 9, perch: 12, pike: 9, grayling: 14, sturgeon: 0, eel: 0, catfish: 0, flat: 6 }[shape] ?? 10;
+  const scaleSize = { carp: 26, salmon: 9, perch: 12, pike: 9, grayling: 14, sturgeon: 0, eel: 0, catfish: 0, flat: 6, shark: 0, tuna: 5 }[shape] ?? 10;
   const n = document.createElement('canvas');
   n.width = W; n.height = H;
   const ng = n.getContext('2d');
@@ -201,7 +221,7 @@ export function createFish(fishId) {
   g.name = 'fish-' + fishId;
 
   const skin = skinTextures(fishId, look);
-  const silver = ['salmon', 'grayling', 'sturgeon'].includes(look.shape) || fishId === 'doebel' || fishId === 'nase';
+  const silver = ['salmon', 'grayling', 'sturgeon', 'tuna'].includes(look.shape) || fishId === 'doebel' || fishId === 'nase';
   const bodyMat = new THREE.MeshPhysicalMaterial({
     map: skin.map, normalMap: skin.normal, normalScale: new THREE.Vector2(0.6, 0.6),
     roughness: 0.4, metalness: silver ? 0.15 : 0.0, clearcoat: 0.8, clearcoatRoughness: 0.2, // nass glänzende Haut
@@ -221,7 +241,11 @@ export function createFish(fishId) {
   const tail = new THREE.Mesh(
     look.shape === 'sturgeon'
       ? finShape([[0, 0], [-0.16, tailH * 1.3], [-0.12, 0], [-0.1, -tailH * 0.5]])
-      : finShape([[0.02, 0], [-0.12, tailH], [-0.08, 0], [-0.12, -tailH]]),
+      : look.shape === 'shark' // oberer Lappen lang (heterozerk)
+        ? finShape([[0.03, 0], [-0.2, tailH * 2.1], [-0.15, tailH * 1.7], [-0.05, 0], [-0.1, -tailH * 0.9], [-0.04, -tailH * 0.2]])
+        : look.shape === 'tuna' // Sichelschwanz
+          ? finShape([[0.02, 0], [-0.04, tailH * 0.5], [-0.14, tailH * 1.7], [-0.09, tailH * 0.5], [-0.07, 0], [-0.09, -tailH * 0.5], [-0.14, -tailH * 1.7], [-0.04, -tailH * 0.5]])
+          : finShape([[0.02, 0], [-0.12, tailH], [-0.08, 0], [-0.12, -tailH]]),
     finMat,
   );
   tail.position.x = -0.48;
@@ -249,6 +273,21 @@ export function createFish(fishId) {
     g.add(new THREE.Mesh(finShape([[-0.18, H * 0.85], [-0.24, H * 1.55], [-0.38, H * 0.9]]), finMat));
   } else if (look.shape === 'catfish') {
     g.add(new THREE.Mesh(finShape([[0.18, H * 0.9], [0.14, H * 1.4], [0.1, H * 0.9]]), finMat));
+  } else if (look.shape === 'shark') {
+    g.add(new THREE.Mesh(finShape([[0.14, H * 0.8], [0.0, H * 2.5], [-0.05, H * 2.3], [-0.07, H * 0.8]]), finMat));
+    g.add(new THREE.Mesh(finShape([[-0.28, H * 0.55], [-0.32, H * 1.1], [-0.35, H * 0.5]]), finMat));
+    g.add(new THREE.Mesh(finShape([[-0.26, -H * 0.55], [-0.31, -H * 1.0], [-0.34, -H * 0.5]]), finMat));
+  } else if (look.shape === 'tuna') {
+    g.add(new THREE.Mesh(finShape([[0.12, H * 0.85], [0.06, H * 1.9], [-0.02, H * 1.15], [-0.05, H * 0.85]]), finMat));
+    const yellow = finMat.clone();
+    yellow.color.set(look.finlets ?? look.fin);
+    g.add(new THREE.Mesh(finShape([[-0.1, H * 0.75], [-0.13, H * 1.9], [-0.2, H * 0.6]]), yellow)); // zweite Rücken- und Afterflosse
+    g.add(new THREE.Mesh(finShape([[-0.1, -H * 0.75], [-0.13, -H * 1.9], [-0.2, -H * 0.6]]), yellow));
+    for (let i = 0; i < 6; i++) { // Flösschen vor dem Schwanz
+      const x = -0.24 - i * 0.035;
+      const r = H * Math.max(0.12, sh.prof(x + 0.5));
+      for (const sg of [1, -1]) g.add(new THREE.Mesh(finShape([[x + 0.012, sg * r * 0.9], [x - 0.01, sg * (r * 0.9 + H * 0.22)], [x - 0.016, sg * r * 0.9]]), yellow));
+    }
   } else if (look.shape === 'flat') {
     // Saumflossen rundherum
     const pts = [];
@@ -264,8 +303,9 @@ export function createFish(fishId) {
   // Brust- und Bauchflossen
   if (look.shape !== 'flat') {
     for (const side of [1, -1]) {
-      const pec = new THREE.Mesh(finShape([[0, 0], [-0.1, -H * 0.5], [-0.05, -H * 0.1]]), finMat);
-      pec.position.set(0.28, -H * 0.35, side * sh.w * 0.75);
+      const big = look.shape === 'shark' ? 2.6 : look.shape === 'tuna' ? 1.8 : 1; // Haie: lange Brustflossen wie Flügel
+      const pec = new THREE.Mesh(finShape([[0, 0], [-0.1 * big, -H * 0.5 * big], [-0.05 * big, -H * 0.1]]), finMat);
+      pec.position.set(0.28 - (big - 1) * 0.04, -H * 0.35, side * sh.w * 0.75);
       pec.rotation.y = side * 0.5;
       g.add(pec);
     }
@@ -275,8 +315,8 @@ export function createFish(fishId) {
   // Augen
   const eyeMat = new THREE.MeshPhysicalMaterial({ color: look.eye || 0xc8a040, roughness: 0.25, metalness: 0.4, clearcoat: 1 });
   const pupilMat = new THREE.MeshPhysicalMaterial({ color: 0x020202, roughness: 0.02, clearcoat: 1 });
-  const eyeR = look.shape === 'catfish' ? 0.008 : look.shape === 'eel' ? 0.01 : look.shape === 'zander' ? 0.02 : 0.016;
-  const eyeX = look.shape === 'pike' || look.shape === 'sturgeon' ? 0.4 : 0.42;
+  const eyeR = look.shape === 'catfish' ? 0.008 : look.shape === 'eel' ? 0.01 : look.shape === 'shark' ? 0.009 : look.shape === 'zander' ? 0.02 : 0.016;
+  const eyeX = look.shape === 'pike' || look.shape === 'sturgeon' ? 0.4 : look.shape === 'shark' ? 0.38 : 0.42;
   for (const side of look.shape === 'flat' ? [1] : [1, -1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(eyeR * (look.shape === 'flat' ? 1.4 : 1), 12, 8), eyeMat);
     const ey = look.shape === 'flat' ? 0.06 : H * 0.28;

@@ -33,7 +33,7 @@ export const GAMES = [
     cover: './games/angeln/cover.svg',
     emoji: '🎣',
     colors: ['#19c3d9', '#0a5a8a'],
-    desc: 'Angeln an echten Gewässern – Gardasee, Bodensee, Ostsee, Donau, Po und Norwegen. 14 Fischarten, Garage, Turnier.',
+    desc: 'Angeln an echten Gewässern – Gardasee, Bodensee, Ostsee, Donau, Po, Azoren und Norwegen. 20 Fischarten mit Haien, Garage, Turnier.',
     tags: ['3D', 'Angeln', 'Natur'],
     isNew: true,
   },

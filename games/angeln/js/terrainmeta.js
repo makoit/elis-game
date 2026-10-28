@@ -226,5 +226,50 @@ export const TERRAIN = {
   "n": 257,
   "nFar": 193,
   "standY": 1.2
+ },
+ "horta": {
+  "heading": 1.7903,
+  "level": 0.0,
+  "nearSize": 2560.0,
+  "farSize": 24000.0,
+  "n": 257,
+  "nFar": 193,
+  "standY": 1.2
+ },
+ "madalena": {
+  "heading": 5.1817,
+  "level": 0.0,
+  "nearSize": 2560.0,
+  "farSize": 24000.0,
+  "n": 257,
+  "nFar": 193,
+  "standY": 1.0
+ },
+ "capelinhos": {
+  "heading": 4.6386,
+  "level": 0.0,
+  "nearSize": 2560.0,
+  "farSize": 24000.0,
+  "n": 257,
+  "nFar": 193,
+  "standY": 0.86
+ },
+ "kanal-boot": {
+  "heading": 1.7628,
+  "level": 0.0,
+  "nearSize": 2560.0,
+  "farSize": 24000.0,
+  "n": 257,
+  "nFar": 193,
+  "standY": 0.0
+ },
+ "hai-boot": {
+  "heading": 0.3248,
+  "level": 0.0,
+  "nearSize": 2560.0,
+  "farSize": 24000.0,
+  "n": 257,
+  "nFar": 193,
+  "standY": 0.0
  }
 };

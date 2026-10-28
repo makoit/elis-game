@@ -7,7 +7,7 @@ Für Laptop (Tastatur/Maus) und Tablet (Touch). Offline spielbar über den gemei
 
 | Modus | Worum geht's |
 |---|---|
-| 🏆 **Karriere** | Start mit Posenrute, Wurm und Brot und 150 Talern. Fische verkaufen bringt Taler, zurücksetzen bringt 1,5× Erfahrung. Mit jeder Stufe werden neue Gewässer frei (Gardasee 1 · Bodensee 2 · Donau 3 · Ostsee 4 · Po 6 · Norwegen 8). In der Garage kauft man Ruten und Köder. Ziel: alle 14 Arten im **Fangbuch**. |
+| 🏆 **Karriere** | Start mit Posenrute, Wurm und Brot und 150 Talern. Fische verkaufen bringt Taler, zurücksetzen bringt 1,5× Erfahrung. Mit jeder Stufe werden neue Gewässer frei (Gardasee 1 · Bodensee 2 · Donau 3 · Ostsee 4 · Po 6 · Azoren 7 · Norwegen 8). In der Garage kauft man Ruten und Köder. Ziel: alle 20 Arten im **Fangbuch**. |
 | ⏱️ **Turnier** | 5 Minuten am gewählten Platz gegen 3 Computer-Angler (Opa Heinz, Lena, Kapitän Jo). Es zählt das Gesamtgewicht. |
 | 🌅 **Freies Angeln** | Alles freigeschaltet, eigenes Fangbuch. |
 
@@ -24,6 +24,8 @@ darunter steht in einem Satz, was zu tun ist. ❓ öffnet die bebilderte Anleitu
 6. **Keschern**: Der Fisch bleibt im Wasser, bis er an der Uferkante ist; dann holt ihn der Kescher im Bogen über Ufer, Steg und Steine heraus. Danach Fangfoto – behalten oder zurücksetzen.
 
 Ob etwas beißt, hängt ab von Fischbestand, Köder, Tiefe, Tageszeit und Wurfweite. Vom Boot zeigt das **Echolot**, wo Fische stehen.
+Rute und Köder muss man passend zum Platz wählen: Die Karte zeigt die Chancen der aktuellen Montage, warnt bei zu schwacher Schnur
+und schlägt mit **💡 Hier besser … Nehmen** die beste Montage aus der eigenen Ausrüstung vor (Karriere: dazu ein 🛒 Profi-Tipp aus der Garage).
 
 | Aktion | Tastatur | Touch |
 |---|---|---|
@@ -38,7 +40,9 @@ Ob etwas beißt, hängt ab von Fischbestand, Köder, Tiefe, Tageszeit und Wurfwe
 - **Gelände**: echte Höhendaten (AWS Terrain Tiles, Mapzen/SRTM) je Platz, 2,5 km fein + 24 km grob, Landnutzung aus OpenStreetMap
   (Wald, Wein, Obst/Oliven, Orte, Fels, Strand, Acker, Feuchtgebiet) als Foto-Textur-Mischung, Gebäude aus OSM-Grundrissen (`tools/terrain.py`).
 - **Himmel & Licht**: HDRI-Fotos von Poly Haven je Tageszeit (Hintergrund + Umgebungslicht, Sonnenrichtung aus dem Bild).
-- **Wasser**: Spiegelung mit `three/addons/objects/Water.js` (Grafik „Niedrig“: nur Himmelsspiegelung, schneller).
+- **Wasser**: Spiegelung mit `three/addons/objects/Water.js`, Shader in `scene.js` (`tuneWater`) nachgeschärft: Wellenschichten in verschiedenen Größen
+  (keine Schwebungs-Streifen), ruhiger zum Horizont, Fresnel wie echtes Wasser. Bootsrümpfe maskieren das Wasser per Stencil (kein Wasser im Boot).
+  Grafik „Niedrig“: nur Himmelsspiegelung, schneller.
 - **Bäume**: Fichte, Laubbaum, Birke, Pappel, Zypresse, Olive, Weinstock aus Foto-Zweigkarten (`tools/foliage.py`), instanziert; Schilf am Ufer.
 - **Angler**: Ready-Player-Me-Modell mit Skelett; Jacken/Weste/Wathose als Hüllen, Farben frei wählbar, Fischerhut, Gummistiefel und Schwimmweste
   (auf dem Boot) von Poly Haven; Arme greifen per IK an Griff und Kurbel, beim Fangfoto halten beide Hände den Fisch.
@@ -63,13 +67,14 @@ Die Uferplätze liegen genau auf der echten Uferlinie.
 | Donau – Wachau 🇦🇹 | Buhne Dürnstein, Hafen Spitz, Kremsmündung, 🚤 Strommitte Weißenkirchen | Nase, Döbel, Zander, Wels, Barsch, Äsche, Sterlet (Stör) |
 | Ostsee – Fehmarn 🇩🇪 | Fehmarnsundbrücke, Steinküste Staberhuk, Mole Burgtiefe, 🚤 Fehmarnbelt | Scholle, Meerforelle, Aal |
 | Po-Ebene 🇮🇹 | Hafen Boretto, Sandbank Guastalla, 🚤 Wels-Gumpe | Wels, Karpfen, Zander, Stör |
+| Atlantik – Azoren 🇵🇹 | Hafen Horta (Kaimauer), Lavafelsen Madalena, Vulkan Capelinhos, 🚤 Kanal Faial–Pico, 🚤 Hai-Revier vor Pico | Makrele, Papageifisch, Bernsteinmakrele, Gelbflossen-Thun, Blauhai, Makohai (Haie immer zurücksetzen) |
 | Gaula – Norwegen 🇳🇴 | Gaulfossen, Pool bei Støren, Melhus | Lachs, Meerforelle, Äsche |
 
 ## Ausrüstung
 
-**Ruten:** Posenrute (Start), Barsch-Spinnrute, Feederrute, Hecht-Spinnrute, Fliegenrute, Brandungsrute, Karpfenrute, Wallerrute.
+**Ruten:** Posenrute (Start), Barsch-Spinnrute, Feederrute, Hecht-Spinnrute, Fliegenrute, Brandungsrute, Karpfenrute, Wallerrute, Meeres-Spinnrute, Hochseerute (Ballon-Pose für Haie).
 Jede Rute hat Technik, Schnur-Tragkraft, Wurfweite und Schnurvorrat.
-**Köder:** Tauwurm, Maden, Mais, Brotflocke, Forellenteig, Boilie, Heilbutt-Pellet, Köderfisch, Wattwurm, Spinner, Blinker, Wobbler, Gummifisch, Trockenfliege, Nymphe.
+**Köder:** Tauwurm, Maden, Mais, Brotflocke, Forellenteig, Boilie, Heilbutt-Pellet, Köderfisch, Wattwurm, Garnele, Muschelfleisch, Tintenfisch, Spinner, Blinker, Wobbler, Gummifisch, Popper, Pilker, Trockenfliege, Nymphe, Käfer-Fliege.
 **Angler:** Hautton, Kurzhaar/Glatze, Haarfarbe, Fischerhut/Basecap/Mütze, Regenjacke/Anglerweste/Softshell/Hoodie/Fleece/T-Shirt, Jeans/Cargo/Wathose
 (mit Gummistiefeln), Farben, Polbrille. Alles wird gespeichert.
 
@@ -88,7 +93,7 @@ js/flora.js                 Bäume und Schilf aus Foto-Zweigkarten (instanziert)
 js/angler.js                Angler (Skelett, Kleidung, IK-Pose), Ruten, Rollen, Schnurführung
 js/tackle.js                Pose, Kunstköder, Boot
 js/fishing.js               Angel-Ablauf als Zustandsmaschine (Wurf, Biss, Anschlag, Drill, Kescher, Fangfoto)
-js/fishmodel.js             Fische (14 Arten) mit gemalter Haut
+js/fishmodel.js             Fische (20 Arten, auch Hai und Thun) mit gemalter Haut
 js/sfx.js                   Geräusche und Naturkulisse (WebAudio)
 assets/                     sky/ (HDRI + JPG), textures/, models/ (GLB), terrain/ (Höhen + Landnutzung)
 tools/                      fetch_assets.py, foliage.py, terrain.py; pose.html, fish.html, viewer.html (Entwickler-Ansichten)

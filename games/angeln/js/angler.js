@@ -197,6 +197,8 @@ const ROD_SPECS = {
   brandung: { len: 4.2, butt: 0.016, tip: 0.0025, blank: 0xe8e8e2, grip: 'shrink', guides: 7, reel: 'spin', reelSize: 1.3 },
   karpfen: { len: 3.6, butt: 0.015, tip: 0.0028, blank: 0x2a3326, grip: 'shrink', guides: 6, reel: 'spin', reelSize: 1.25 },
   waller: { len: 2.6, butt: 0.02, tip: 0.0045, blank: 0x3a1414, grip: 'eva', guides: 6, reel: 'spin', reelSize: 1.45 },
+  meerspinn: { len: 2.4, butt: 0.016, tip: 0.0035, blank: 0x1a6a7a, grip: 'eva', guides: 7, reel: 'spin', reelSize: 1.3 },
+  hochsee: { len: 1.9, butt: 0.024, tip: 0.006, blank: 0x18244a, grip: 'shrink', guides: 6, reel: 'spin', reelSize: 1.7 },
 };
 
 const mat = (color, rough, metal = 0, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal, ...extra });

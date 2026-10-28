@@ -200,6 +200,9 @@ body.is-touch .desktop-only { display: none !important; }
 .fish-tag { padding: 4px 10px; border-radius: 999px; background: rgba(47, 224, 208, 0.15); border: 1px solid rgba(47, 224, 208, 0.4); font-size: 13px; font-weight: 700; }
 .fish-tag.unknown { background: rgba(255, 255, 255, 0.05); border-color: var(--stroke); color: var(--ink-3); }
 .sp-gear { padding: 10px; border-radius: 12px; background: rgba(0, 0, 0, 0.2); font-size: 14px; line-height: 1.5; }
+.sp-tip { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--stroke); }
+.sp-tip .chip-btn { margin-left: 6px; padding: 2px 12px; }
+.sp-tip.shop { color: var(--ink-2); }
 @media (max-aspect-ratio: 1/1) { .map-wrap { flex-direction: column; } .spot-panel { max-width: none; } }
 
 /* ---------- HUD ---------- */

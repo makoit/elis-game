@@ -1,7 +1,7 @@
 // Service Worker für Hub und alle Spiele unter games/: macht alles offline-fähig (Netz zuerst, bei Fehler aus dem Cache).
 // 'no-cache' umgeht den HTTP-Cache (GitLab Pages: max-age=600) und fragt immer per ETag beim Server nach,
 // sonst liefert ein Reload bis zu 10 Minuten lang alte Dateien.
-const CACHE = 'elis-v14';
+const CACHE = 'elis-v15';
 const CORE = [
   './', './index.html', './manifest.webmanifest', './hub/hub.css', './hub/hub.js', './hub/games.js', './vendor/three.module.js',
   './games/bike-race/', './games/bike-race/index.html', './games/bike-race/css/style.css', './games/bike-race/js/main.js',

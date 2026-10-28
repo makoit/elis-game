@@ -17,6 +17,6 @@ const pm = new THREE.PMREMGenerator(r);
 new RGBELoader().load('../assets/sky/noon.hdr', (t) => { t.mapping = THREE.EquirectangularReflectionMapping; scene.environment = pm.fromEquirectangular(t).texture; });
 const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(1, 3, 4); scene.add(sun);
 const cam = new THREE.OrthographicCamera(-2.1, 2.1, 1.35, -1.35, 0.1, 20); cam.position.set(0, 0.4, 5); cam.lookAt(0, 0, 0);
-FISH_IDS.forEach((id, i) => { const f = createFish(id); f.position.set(-1.5 + (i % 4) * 1.0, 1.0 - Math.floor(i / 4) * 0.62, 0); f.rotation.y = -0.25; f.scale.setScalar(0.85); scene.add(f); });
+FISH_IDS.forEach((id, i) => { const f = createFish(id); f.position.set(-1.68 + (i % 5) * 0.84, 1.0 - Math.floor(i / 5) * 0.6, 0); f.rotation.y = -0.25; f.scale.setScalar(0.72); scene.add(f); });
 (function loop() { r.render(scene, cam); requestAnimationFrame(loop); })();
 </script></body></html>

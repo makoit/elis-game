@@ -125,10 +125,42 @@ function terrainMaterial() {
   return m;
 }
 
+// Water.js nachschärfen: Wellen-Normalen in der Ferne glätten (sonst Streifen/Moiré am Horizont), Verzerrung
+// der Spiegelung nahe der Kamera begrenzen (sonst große Flecken) und Fresnel wie echtes Wasser (rf0 ≈ 0,03):
+// von oben sieht man die Wasserfarbe, flach zum Horizont den Himmel.
+function tuneWater(mat, body) {
+  mat.uniforms.bodyColor = { value: new THREE.Color(body) };
+  mat.fragmentShader = mat.fragmentShader
+    .replace('uniform vec3 waterColor;', 'uniform vec3 waterColor;\nuniform vec3 bodyColor;')
+    // Wellenschichten in klar verschiedenen Größen und Richtungen (103/107 im Original laufen fast gleich → Schwebungs-Streifen)
+    .replace(/vec2 uv0 = [^\n]*\n[^\n]*uv1 = [^\n]*\n[^\n]*uv2 = [^\n]*\n[^\n]*uv3 = [^\n]*\n/, `
+      vec2 uv0 = uv / 61.0 + vec2( time / 17.0, time / 29.0 );
+      vec2 uv1 = mat2( 0.8, -0.6, 0.6, 0.8 ) * uv / 23.0 - vec2( time / -13.0, time / 19.0 );
+      vec2 uv2 = mat2( 0.28, 0.96, -0.96, 0.28 ) * uv / 240.0 + vec2( time / 101.0, time / 97.0 );
+      vec2 uv3 = mat2( -0.5, 0.87, -0.87, -0.5 ) * uv / 9.0 - vec2( time / 7.0, time / -11.0 );
+`)
+    .replace('vec3 surfaceNormal = normalize( noise.xzy * vec3( 1.5, 1.0, 1.5 ) );', `
+      float distance = length( eye - worldPosition.xyz );
+      float calm = smoothstep( 20.0, 350.0, distance );
+      float rough = mix( 0.85, 0.25, calm );
+      vec3 surfaceNormal = normalize( noise.xzy * vec3( rough, 1.0, rough ) );`)
+    .replace('float distance = length(worldToEye);', '')
+    .replace('( 0.001 + 1.0 / distance ) * distortionScale', '( 0.6 / ( distance + 12.0 ) ) * distortionScale')
+    .replace('float rf0 = 0.3;', 'float rf0 = 0.03;')
+    .replace('vec3 scatter = max( 0.0, dot( surfaceNormal, eyeDirection ) ) * waterColor;',
+      'vec3 scatter = mix( waterColor, bodyColor, pow( max( 0.0, dot( surfaceNormal, eyeDirection ) ), 0.6 ) ) * ( 0.5 + 0.5 * max( 0.0, dot( surfaceNormal, sunDirection ) ) );');
+  mat.stencilWrite = true; // nicht im Bootsrumpf zeichnen (siehe createBoat)
+  mat.stencilRef = 1;
+  mat.stencilFunc = THREE.NotEqualStencilFunc;
+}
+
 // Billiges Wasser (Grafik „niedrig“ und Garage): spiegelt nur den Himmel (Umgebungs-Map), Normalmap wandert
 function cheapWater(color, normals, repeat = 40) {
   normals.repeat.set(repeat, repeat);
-  return new THREE.MeshStandardMaterial({ color, roughness: 0.06, metalness: 0, normalMap: normals, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.3 });
+  return new THREE.MeshStandardMaterial({
+    color, roughness: 0.06, metalness: 0, normalMap: normals, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.3,
+    stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, // nicht im Bootsrumpf zeichnen
+  });
 }
 
 export class FishingScene {
@@ -212,8 +244,10 @@ export class FishingScene {
     progress('Wasser …');
     const normals = await loadTex(ASSETS + 'textures/waternormals.jpg');
     normals.wrapS = normals.wrapT = THREE.RepeatWrapping;
+    normals.anisotropy = this.renderer.capabilities.getMaxAnisotropy(); // flach betrachtet scharf statt verschmiert
     const wGeo = new THREE.PlaneGeometry(40000, 40000);
-    const waterColor = new THREE.Color(sc.deep).multiplyScalar(0.7);
+    const dim = this.night ? 0.35 : 1;
+    const waterColor = new THREE.Color(sc.deep).multiplyScalar(0.55 * dim);
     if (this.quality === 'low') {
       this.water = new THREE.Mesh(wGeo, cheapWater(waterColor, normals, 2000));
     } else {
@@ -223,6 +257,7 @@ export class FishingScene {
         distortionScale: sc.waves ? 3.2 : river ? 1.6 : 2.2, fog: true,
       });
       this.water.material.uniforms.size.value = river ? 3 : 2.2;
+      tuneWater(this.water.material, new THREE.Color(sc.water).multiplyScalar(0.5 * dim));
     }
     this.water.rotation.x = -Math.PI / 2;
     s.add(this.water);
@@ -350,6 +385,7 @@ export class FishingScene {
       ostsee: { forest: ['oak', 'birch'], orchard: 'oak', town: 'birch' },
       po: { forest: ['poplar', 'poplar'], orchard: 'poplar', town: 'poplar' },
       gaula: { forest: ['spruce', 'birch'], orchard: 'birch', town: 'birch' },
+      azoren: { forest: ['cypress', 'oak'], orchard: 'oak', town: 'oak' }, // Sicheltanne (wie Zypresse) und Lorbeerwald
     }[water.id] || { forest: ['oak', 'spruce'], orchard: 'oak', town: 'oak' };
     const q = this.quality === 'low' ? 0.4 : this.quality === 'mid' ? 0.7 : 1;
     const ft = treeInstances(t, 'forest', Math.round(2600 * q));

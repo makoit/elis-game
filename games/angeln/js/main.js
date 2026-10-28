@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
   FISH, FISH_IDS, RODS, BAITS, TECHNIQUES, TIMES, DEPTHS, rodById, baitById, baitFitsRod, fishForBait, biteTable, pickFish, rollWeight,
-  SKIN_TONES, HAIR_COLORS, HAIR_STYLES, HATS, TOPS, PANTS, OUTFIT_COLORS, DEFAULT_LOOK, levelFromXp, xpForLevel, fmtKg, lengthCm,
+  fishingDepth, lineOk, gearScore, bestGear, SKIN_TONES, HAIR_COLORS, HAIR_STYLES, HATS, TOPS, PANTS, OUTFIT_COLORS, DEFAULT_LOOK, levelFromXp, xpForLevel, fmtKg, lengthCm,
 } from './data.js';
 import { WATERS, waterById, spotById, whereIs } from './spots.js';
 import { drawWaterMap, hitSpot } from './worldmap.js';
@@ -344,15 +344,38 @@ function renderSpotPanel() {
   const fish = Object.entries(s.fish).sort((a, b) => b[1] - a[1]);
   const rod = rodById(state.rod);
   const bait = baitById(state.bait);
-  const tab = biteTable(s, rod, bait.id, rod.tech === 'grund' ? 2 : rod.tech === 'pose' ? state.depth : bait.depth ?? 1, state.time);
-  const total = tab.reduce((a, t) => a + t.rate, 0);
+  const depth = fishingDepth(rod, bait, state.depth);
+  const tab = biteTable(s, rod, bait.id, depth, state.time);
+  const total = gearScore(s, rod, bait, depth, state.time);
   const chance = total > 1.2 ? '🟢 Gute Chancen' : total > 0.4 ? '🟡 Es könnte beißen' : total > 0 ? '🟠 Eher wenig los' : '🔴 Mit diesem Köder beißt hier nichts';
+  // Schnur zu schwach für die Fische, die hier auf diesen Köder beißen?
+  const weak = tab.filter((t) => lineOk(rod, t.id) < 0.6).map((t) => (known(t.id) ? FISH[t.id].name : '???'));
+  // Tipp: beste Montage aus der eigenen Ausrüstung – und in der Karriere, ob es in der Garage noch Besseres gibt
+  const mine = bestGear(s, state.time, RODS.filter((r) => ownsRod(r.id)), BAITS.filter((b) => ownsBait(b.id)));
+  const shop = career() ? bestGear(s, state.time, RODS, BAITS) : null;
+  const gearName = (g) => `<b>${g.rod.name}</b> + <b>${g.bait.emoji} ${g.bait.name}</b>${g.rod.tech === 'pose' ? ` (${DEPTHS[g.depth]})` : ''}`;
+  let tip = '';
+  if (mine && mine.score > total * 1.3 + 0.05) {
+    tip += `<div class="sp-tip">💡 Hier besser: ${gearName(mine)} <button class="chip-btn" id="btn-best-gear">Nehmen</button></div>`;
+  }
+  if (shop && shop.score > Math.max(total, mine?.score || 0) * 1.5 + 0.1) {
+    tip += `<div class="sp-tip shop">🛒 Profi-Tipp aus der Garage: ${gearName(shop)}</div>`;
+  }
   $('spot-panel').innerHTML = `
     <div class="sp-head"><span class="sp-type">${s.boat ? '🚤 Boot' : '🎣 Ufer'}</span><b>${s.name}</b><small>${s.place} · ${s.depth} m tief</small></div>
     <p>${s.text}</p>
     <div class="sp-fish">${fish.map(([id, n]) => `<span class="fish-tag ${known(id) ? '' : 'unknown'}" title="${known(id) ? FISH[id].name : 'Unbekannt'}">${known(id) ? FISH[id].name : '???'} ${'•'.repeat(n)}</span>`).join('')}</div>
-    <div class="sp-gear">Deine Montage: <b>${rod.name}</b> + <b>${bait.emoji} ${bait.name}</b><br><span>${chance}</span></div>
+    <div class="sp-gear">Deine Montage: <b>${rod.name}</b> + <b>${bait.emoji} ${bait.name}</b><br><span>${chance}</span>
+      ${weak.length ? `<br><span>⚠️ Für ${weak.join(', ')} ist die Schnur zu schwach – nimm eine stärkere Rute.</span>` : ''}${tip}</div>
     <div class="sp-where muted small">${w.desc}</div>`;
+  const bg = $('btn-best-gear');
+  if (bg) bg.onclick = () => {
+    sfx.click();
+    Object.assign(state, { rod: mine.rod.id, bait: mine.bait.id, depth: mine.rod.tech === 'pose' ? mine.depth : state.depth });
+    store.set('rod', state.rod); store.set('bait', state.bait); store.set('depth', state.depth);
+    toast(`🎣 ${mine.rod.name} + ${mine.bait.name}`);
+    renderSpotPanel();
+  };
 }
 $('map').addEventListener('pointerdown', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
@@ -517,7 +540,7 @@ function onCaught(c) {
   const mustRelease = f.protected || undersize;
   const rule = $('catch-rule');
   rule.classList.toggle('hidden', !mustRelease);
-  rule.textContent = f.protected ? '🛡️ Der Stör ist streng geschützt – er muss immer zurück ins Wasser.' : undersize ? `📏 Schonmaß ${f.min} cm – dieser Fisch ist noch zu klein und darf weiterwachsen.` : '';
+  rule.textContent = f.protected ? `🛡️ Der ${f.name} ist geschützt – er muss immer zurück ins Wasser.` : undersize ? `📏 Schonmaß ${f.min} cm – dieser Fisch ist noch zu klein und darf weiterwachsen.` : '';
   const price = Math.max(3, Math.round(c.kg * f.price + 4));
   c.price = price;
   $('btn-keep').classList.toggle('hidden', mustRelease || state.mode !== 'career');
