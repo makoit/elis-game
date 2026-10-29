@@ -1,7 +1,7 @@
 {
-  "name": "Elis Spiele",
-  "short_name": "Elis Spiele",
-  "description": "Elis Spielesammlung – Bike Race, Angel-Abenteuer und bald mehr",
+  "name": "Elis & Elaras Spiele",
+  "short_name": "Elis & Elara",
+  "description": "Elis & Elaras Spielesammlung – Bike Race, Angel-Abenteuer, Tie-Dye Studio und bald mehr",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",

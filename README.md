@@ -1,4 +1,4 @@
-# Elis Spiele 🎮
+# Elis & Elaras Spiele 🎮
 
 Eine kleine Spielesammlung im Browser – Startseite wie ein App Store: jedes Spiel ist eine Kachel, oben kann man nach Kategorien filtern.
 Kein Build, keine Abhängigkeiten zur Laufzeit. Für Laptop und Tablet (z. B. Amazon Fire Kids), als App installierbar (PWA) und offline spielbar.
@@ -7,6 +7,7 @@ Kein Build, keine Abhängigkeiten zur Laufzeit. Für Laptop und Tablet (z. B. Am
 |---|---|---|
 | 🚲 Bike Race | 🏁 Rennen | [games/bike-race/](games/bike-race/README.md) |
 | 🎣 Angel-Abenteuer | 🗺️ Abenteuer | [games/angeln/](games/angeln/README.md) |
+| 🌀 Tie-Dye Studio (Elara) | 🎨 Kreativ | [games/tie-dye/](games/tie-dye/README.md) |
 
 ## Starten
 

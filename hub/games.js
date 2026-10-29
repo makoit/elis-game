@@ -37,4 +37,16 @@ export const GAMES = [
     tags: ['3D', 'Angeln', 'Natur'],
     isNew: true,
   },
+  {
+    id: 'tie-dye',
+    title: 'Tie-Dye Studio',
+    category: 'kreativ',
+    path: './games/tie-dye/',
+    cover: './games/tie-dye/cover.svg',
+    emoji: '🌀',
+    colors: ['#ff5fb0', '#9b4dff'],
+    desc: 'Elaras Batik-Werkstatt: Stoff falten, Gummis drum, Farbe drauf – und staunen! Mit Kunden-Wünschen im eigenen Laden.',
+    tags: ['Basteln', 'Mode', 'Farben'],
+    isNew: true,
+  },
 ];
