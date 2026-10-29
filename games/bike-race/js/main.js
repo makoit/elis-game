@@ -1,3 +1,4 @@
+import '../../shared/compat.js'; // zuerst: Nachrüstungen für ältere Safari-Versionen
 import * as THREE from '../../../vendor/three.module.js';
 import {
   BRANDS, CATEGORIES, KINDS, PALETTE, DEFAULT_CONFIG, resolveBike, statBars, randomConfig, brandsOf, catsOf, partsFor, ALL_PART_KEYS,

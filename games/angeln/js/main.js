@@ -1,3 +1,4 @@
+import '../../shared/compat.js'; // zuerst: Nachrüstungen für ältere Safari-Versionen
 import * as THREE from '../../../vendor/three.module.js';
 import {
   FISH, FISH_IDS, RODS, BAITS, TECHNIQUES, TIMES, DEPTHS, rodById, baitById, baitFitsRod, fishForBait, biteTable, pickFish, rollWeight,
