@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import { createBike } from './bikes.js';
 import { createSky, createEnvMap } from './env.js';
 import { disposeObject } from './trackmesh.js';

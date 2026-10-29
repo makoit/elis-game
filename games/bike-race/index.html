@@ -171,6 +171,21 @@
       </div>
     </section>
   </div>
+  <script>
+    // Falls die 3D-Grafik auf einem Gerät nicht startet (z. B. zu wenig Speicher auf Tablets): Hinweis statt leerem Bild
+    window.elisFatal = function (msg) {
+      if (document.getElementById('fatal')) return;
+      var d = document.createElement('div');
+      d.id = 'fatal';
+      d.style.cssText = 'position:fixed;inset:0;z-index:99;display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:center;padding:24px;text-align:center;background:#06121c;color:#fff;font:600 17px system-ui,sans-serif';
+      d.innerHTML = '<div style="font-size:44px">😕</div><div>' + msg + '</div><button style="font:800 18px system-ui;padding:12px 26px;border-radius:999px;border:0;background:#ffc61a;color:#2a1a00">Neu laden</button>';
+      d.querySelector('button').onclick = function () { location.reload(); };
+      document.body.appendChild(d);
+    };
+    window.addEventListener('error', function (e) {
+      if (e.message) window.elisFatal('Das Spiel konnte nicht starten.<br><small style="opacity:.6">' + e.message + '</small>');
+    });
+  </script>
   <script type="module" src="./js/main.js"></script>
   <script>
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {

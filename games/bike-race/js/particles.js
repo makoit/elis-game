@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 
 // Kleines Partikelsystem (Staub, Kies, Wasser, Boost-Funken) als ein Points-Objekt mit festem Pool.
 export class Particles {

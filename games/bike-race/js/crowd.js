@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { mergeGeometries } from '../../../vendor/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from './trackdata.js';
 
 // Zuschauer am Streckenrand: kleine Gruppen, die jubeln (hüpfen, Arme hoch) – lauter und wilder, wenn der Fahrer vorbeikommt.

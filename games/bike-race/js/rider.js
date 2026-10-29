@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { clone as cloneSkinned } from '../../../vendor/addons/utils/SkeletonUtils.js';
 import { assets } from './assets.js';
 
 // Fahrer aus einem echten 3D-Menschenmodell (Ready Player Me, Skelett wie Mixamo; dasselbe wie der Angler im Angelspiel).

@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 
 // Lädt Foto-Texturen (Poly Haven, CC0) asynchron und gibt sie gecacht zurück.
 // Die Farbtextur wird auf Graustufen mit festem Mittelwert normiert, damit die Kartenfarben (Vertexfarben) erhalten bleiben

@@ -1,6 +1,6 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { GLTFLoader } from '../../../vendor/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from '../../../vendor/addons/loaders/RGBELoader.js';
 
 // Fertige Assets: Himmelsfotos und Modelle von Poly Haven (CC0, tools/fetch_assets.py) und das Fahrer-Modell
 // (Ready Player Me, liegt beim Angelspiel). Alles ist optional: fehlt etwas (offline, Ladefehler), nimmt das Spiel

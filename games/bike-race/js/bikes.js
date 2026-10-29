@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { mergeGeometries } from '../../../vendor/addons/utils/BufferGeometryUtils.js';
 import { TIRE_WALL_COLORS } from './bikedata.js';
 import { UP, v3, _m, _q, _one, clamp, smooth, prof, loft, line, spline, Bucket, canvasTex, hex, hash01 } from './geom.js';
 import { buildMoto, MOTO_GEOM, MOTO_POSES } from './motos.js';

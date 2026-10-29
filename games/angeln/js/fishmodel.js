@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import { FISH } from './data.js';
 
 // Prozedurale 3D-Fische: Körper als Röhre mit gemalter Haut-Textur (Verlauf, artgerechte Muster, Schuppen-Normalmap, nasser Glanz),

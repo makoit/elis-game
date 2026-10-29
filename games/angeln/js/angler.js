@@ -1,6 +1,6 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { GLTFLoader } from '../../../vendor/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from '../../../vendor/addons/utils/SkeletonUtils.js';
 import { SKIN_TONES, HAIR_COLORS, OUTFIT_COLORS, rodById } from './data.js';
 
 // Angler: echtes 3D-Menschenmodell (Ready Player Me, Skelett wie Mixamo) mit umfärbbarer Kleidung,

@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { mergeGeometries } from '../../../vendor/addons/utils/BufferGeometryUtils.js';
 
 // Pflanzen aus Foto-Laubkarten (Poly-Haven-Blatt-/Nadeltexturen, zu Zweigkarten zusammengesetzt in tools/foliage.py):
 // Bäume werden einmal je Art als Geometrie gebaut (Stamm + viele Karten) und dann instanziert gezeichnet.

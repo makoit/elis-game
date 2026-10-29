@@ -1,9 +1,9 @@
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { EffectComposer } from '../../../vendor/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from '../../../vendor/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from '../../../vendor/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../../../vendor/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from '../../../vendor/addons/postprocessing/ShaderPass.js';
 
 // Letzter Pass (nach Tonemapping, sRGB): Speed-Radialblur, Farbsaum bei Boost, Vignette, leichtes Color-Grading.
 const FinalShader = {

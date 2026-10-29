@@ -1,7 +1,7 @@
-import * as THREE from 'three';
-import { Water } from 'three/addons/objects/Water.js';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { Water } from '../../../vendor/addons/objects/Water.js';
+import { RGBELoader } from '../../../vendor/addons/loaders/RGBELoader.js';
+import { GLTFLoader } from '../../../vendor/addons/loaders/GLTFLoader.js';
 import { createAngler, rodLinePoints } from './angler.js';
 import { loadTerrain, heightAt, coverAt, terrainGeometry, treeInstances, buildingMeshes, COVER } from './terrain.js';
 import { TERRAIN } from './terrainmeta.js';
@@ -201,6 +201,13 @@ export class FishingScene {
     this.riverWidth = 0;
     this.night = timeIdx === 3;
 
+    // alles Nötige gleichzeitig anfordern statt nacheinander (spart auf dem Handy viele Sekunden)
+    const terrainP = TERRAIN[spot.id]
+      ? loadTerrain(spot.id, ASSETS + 'terrain/').catch((e) => { console.warn('Gelände fehlt', e); return null; })
+      : Promise.resolve(null);
+    const normalsP = loadTex(ASSETS + 'textures/waternormals.jpg');
+    if (!spot.boat) glb('rock_moss_set_01').catch(() => {});
+
     progress('Himmel …');
     const sky = await this.loadSky(timeIdx);
     const L = LIGHT[sky.key];
@@ -214,7 +221,7 @@ export class FishingScene {
     s.add(new THREE.HemisphereLight(0xdfe8ff, 0x4a5a3a, this.night ? 0.12 : 0.35));
     const sun = new THREE.DirectionalLight(L.sun, L.sunI);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.setScalar(this.quality === 'high' ? 2048 : 1024);
     Object.assign(sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 220 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.03;
@@ -223,10 +230,7 @@ export class FishingScene {
 
     // ---- Gelände ----
     progress('Gelände …');
-    this.terrain = null;
-    if (TERRAIN[spot.id]) {
-      try { this.terrain = await loadTerrain(spot.id, ASSETS + 'terrain/'); } catch (e) { console.warn('Gelände fehlt', e); }
-    }
+    this.terrain = await terrainP;
     if (this.terrain) {
       const t = this.terrain;
       const tmat = terrainMaterial();
@@ -242,7 +246,7 @@ export class FishingScene {
 
     // ---- Wasser ----
     progress('Wasser …');
-    const normals = await loadTex(ASSETS + 'textures/waternormals.jpg');
+    const normals = await normalsP;
     normals.wrapS = normals.wrapT = THREE.RepeatWrapping;
     normals.anisotropy = this.renderer.capabilities.getMaxAnisotropy(); // flach betrachtet scharf statt verschmiert
     const wGeo = new THREE.PlaneGeometry(40000, 40000);
@@ -734,7 +738,11 @@ export class FishingScene {
   render() { this.renderer.render(this.scene, this.camera); }
 
   resize() {
-    this.camera.aspect = innerWidth / innerHeight;
+    const a = innerWidth / innerHeight;
+    this.camera.aspect = a;
+    // Hochformat (Handy): Blickfeld in der Höhe aufziehen, damit seitlich genug von Angler und Wasser zu sehen ist
+    const tanV = Math.min(Math.tan(THREE.MathUtils.degToRad(41)), Math.max(Math.tan(THREE.MathUtils.degToRad(29)), 0.5 / a));
+    this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(tanV));
     this.camera.updateProjectionMatrix();
   }
 
@@ -805,9 +813,15 @@ export class Showcase {
     if (a?.userData.update) a.userData.update(dt);
     this.holder.rotation.y = this.mode === 'angler' ? 0.5 + Math.sin(this.spin) * 0.5 : this.spin;
     if (this.water) this.water.material.normalMap.offset.x += dt * 0.01;
-    const wide = innerWidth / innerHeight > 1.2;
-    this.camera.position.set(wide ? 1.1 : 0, 1.35, 5.4);
-    this.camera.lookAt(wide ? 1.1 : 0, 1.05, 0);
+    const asp = innerWidth / innerHeight;
+    const stacked = asp <= 1.2 || (innerWidth <= 760 && innerHeight > 520); // wie im CSS: Menü unten statt rechts
+    if (!stacked) {
+      this.camera.position.set(1.1, 1.35, 5.4);
+      this.camera.lookAt(1.1, 1.05, 0);
+    } else { // Angler in die obere Hälfte, unten liegt das Menü
+      this.camera.position.set(0, 1.2, 8.2);
+      this.camera.lookAt(0, -0.05, 0);
+    }
   }
 
   render() { this.renderer.render(this.scene, this.camera); }

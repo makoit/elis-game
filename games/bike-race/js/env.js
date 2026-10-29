@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import { MAPS } from './maps.js';
 
 // Himmelskuppel mit Farbverlauf und Sonne + daraus abgeleitete Umgebungsreflexion (PBR-Glanz auf Rahmen etc.)

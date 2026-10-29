@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { mergeGeometries } from '../../../vendor/addons/utils/BufferGeometryUtils.js';
 import { TERRAIN } from './terrainmeta.js';
 
 // Echtes Gelände je Angelplatz (erzeugt von tools/terrain.py aus Höhendaten + OpenStreetMap).

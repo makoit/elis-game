@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 
 // Angelzubehör in echten Proportionen: Pose (Balsa mit Antenne), Kunstköder, Boot.
 // Maße in Metern; Ursprung von Pose/Köder = Schnuröse.

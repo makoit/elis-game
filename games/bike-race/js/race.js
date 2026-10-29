@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import { buildTrack, mulberry32 } from './trackdata.js';
 import { BikeSim, collideRiders, SPEED_SCALE, G } from './physics.js';
 import { createBike } from './bikes.js';

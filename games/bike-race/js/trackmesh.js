@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { mergeGeometries, mergeVertices } from '../../../vendor/addons/utils/BufferGeometryUtils.js';
 import { mulberry32 } from './trackdata.js';
 import { loadSurface } from './pbr.js';
 

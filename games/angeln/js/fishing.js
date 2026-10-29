@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import { FISH, TECHNIQUES, biteTable, pickFish, rollWeight, lengthCm, baitById } from './data.js';
 import { createFish, animateFish } from './fishmodel.js';
 import { poseCast, bendRod } from './angler.js';

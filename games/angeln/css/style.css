@@ -227,12 +227,14 @@ body.is-touch .desktop-only { display: none !important; }
 .icon-btn { width: 46px; height: 46px; border-radius: 14px; background: var(--glass); border: 1px solid var(--stroke); font-size: 20px; }
 @keyframes pulse { 50% { transform: scale(1.06); } }
 .hud-rank {
-  position: absolute; top: calc(78px + var(--safe-t)); right: calc(12px + var(--safe-r)); margin: 0; padding: 8px 12px; list-style: none;
+  position: absolute; top: calc(var(--coach-b, 150px) + 8px); right: calc(12px + var(--safe-r)); margin: 0; padding: 8px 12px; list-style: none;
   border-radius: 14px; background: var(--glass); border: 1px solid var(--stroke); font: 600 14px var(--font); min-width: 180px;
 }
 .hud-rank li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
 .hud-rank li.me { color: var(--accent-hi); font-weight: 800; }
-.sonar { position: absolute; left: calc(12px + var(--safe-l)); top: calc(78px + var(--safe-t)); width: 220px; height: 120px; border-radius: 12px; border: 2px solid #1a3a4a; }
+/* Echolot und Rangliste unter der Schritt-Leiste; --hud-b / --coach-b setzt main.js nach der echten Höhe (Leisten brechen um) */
+.sonar { position: absolute; left: calc(12px + var(--safe-l)); top: calc(var(--coach-b, 150px) + 8px); width: 220px; height: 120px; border-radius: 12px; border: 2px solid #1a3a4a; }
+#hud:has(#fight:not(.hidden)) .sonar { display: none; }
 .hint-box {
   position: absolute; left: 50%; bottom: calc(14px + var(--safe-b)); transform: translateX(-50%); max-width: min(520px, 46vw);
   font: 600 13px/1.35 var(--font); color: var(--ink-2); text-align: center; padding: 6px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.28);
@@ -366,7 +368,7 @@ body.is-touch .desktop-only { display: none !important; }
 
 /* Schritt-Leiste */
 #coach {
-  position: absolute; left: 50%; top: calc(66px + var(--safe-t)); transform: translateX(-50%); width: min(760px, 94vw);
+  position: absolute; left: 50%; top: calc(var(--hud-b, 66px) + 8px); transform: translateX(-50%); width: min(760px, 94vw);
   display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
 }
 #coach-steps { display: flex; gap: 4px; margin: 0; padding: 4px; list-style: none; border-radius: 999px; background: rgba(4, 22, 31, 0.6); border: 1px solid var(--stroke); }
@@ -398,3 +400,100 @@ body.is-touch .desktop-only { display: none !important; }
 .guide li b { font-size: 17px; }
 .guide li p { margin: 4px 0 0; font-size: 15px; line-height: 1.4; color: var(--ink-2); }
 .guide kbd { padding: 1px 6px; border-radius: 6px; border: 1px solid var(--stroke-2); background: var(--glass-hi); }
+
+/* ---------- Handy quer (wenig Höhe) ---------- */
+@media (max-height: 520px) {
+  .sonar { width: 150px; height: 82px; }
+  .screen { gap: 8px; padding: calc(8px + var(--safe-t)) calc(14px + var(--safe-r)) calc(8px + var(--safe-b)) calc(14px + var(--safe-l)); }
+  .screen h1 { font-size: 22px; }
+  .tagline { margin-top: 6px; padding: 4px 12px; }
+  .cards { gap: 10px; }
+  .card .name { font-size: 20px; margin: 2px 0; }
+  .player-strip { padding: 6px 14px; font-size: 13px; gap: 12px; }
+  .btn { min-height: 42px; padding: 0 16px; font-size: 15px; }
+  .garage { width: min(520px, 60vw); gap: 6px; }
+  .tab { min-height: 38px; font-size: 15px; }
+  .water-card { padding: 4px 10px 4px 4px; }
+  .water-card canvas { width: 64px; height: 38px; }
+  .water-card b { font-size: 13px; }
+  .map-wrap { min-height: 210px; }
+  #coach-steps li { padding: 2px 8px; font-size: 12px; }
+  #coach-text { font-size: 13px; padding: 5px 12px; }
+  .hint-box { display: none; }
+  .chip { padding: 4px 10px; }
+  .chip b { font-size: 15px; }
+  .icon-btn { width: 40px; height: 40px; font-size: 18px; }
+  .tbtn.action { width: 112px; height: 112px; }
+  .tbtn.side { width: 60px; height: 60px; }
+}
+
+/* ---------- Schmale oder hochkantige Fenster (Handy hoch, Tablet hoch, kleines Browserfenster) ---------- */
+@media (max-width: 760px) and (min-height: 521px), (max-aspect-ratio: 6/5) {
+  .screen { gap: 10px; padding: calc(10px + var(--safe-t)) calc(14px + var(--safe-r)) calc(12px + var(--safe-b)) calc(14px + var(--safe-l)); }
+  .screen h1 { font-size: 22px; gap: 8px; }
+  .screen h1 .step { font-size: 11px; padding: 4px 8px; }
+  .coins { font-size: 14px; }
+  .title { margin-top: 1vh; }
+  .tagline { font-size: 12px; padding: 5px 12px; }
+  /* Modus-Karten als kompakte Zeilen */
+  .cards { gap: 10px; }
+  .cards.big .card {
+    flex: 1 1 100%; max-width: none; min-height: 0; padding: 12px 16px;
+    display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: center;
+  }
+  .cards.big .card .emoji { grid-row: span 2; font-size: 36px; }
+  .cards.big .card .name { font-size: 20px; margin: 0; }
+  .cards.big .card .desc { font-size: 13px; }
+  .player-strip { gap: 10px; padding: 8px 14px; font-size: 13px; border-radius: 18px; }
+  .xpbar { width: 70px; }
+  .btn { min-height: 46px; padding: 0 16px; font-size: 16px; }
+  .actions.row .btn.primary { flex: 1 1 100%; }
+  /* Garage: Angler oben sichtbar, Einstellungen unten */
+  .screen.garage-screen {
+    align-items: stretch;
+    background: linear-gradient(180deg, transparent 30%, rgba(4, 22, 31, 0.6) 46%, rgba(4, 22, 31, 0.9) 62%);
+  }
+  .garage { width: 100%; flex: 0 0 auto; height: 50vh; height: 50dvh; margin-top: auto; padding: 10px 12px; }
+  .screen.garage-screen .actions.row { margin-top: 0; }
+  .tab { min-height: 42px; font-size: 15px; }
+  .shop-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .book-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  /* Karte */
+  .water-card canvas { width: 64px; height: 38px; }
+  .water-card b { font-size: 14px; }
+  .map-wrap { min-height: 0; flex: 0 0 auto; }
+  .map-wrap { flex-direction: column; }
+  .map-box { flex: 0 0 auto; height: 44vh; min-height: 220px; }
+  .spot-panel { max-width: none; flex: 0 0 auto; }
+  .spot-panel { overflow: visible; }
+  .dialog { padding: 16px; }
+  .dialog h2 { font-size: 24px; }
+}
+
+/* ---------- Handy hoch: Spiel-Anzeige kompakter ---------- */
+@media (max-width: 600px) {
+  /* Spiel-Anzeige */
+  .hud-top { top: calc(8px + var(--safe-t)); left: calc(8px + var(--safe-l)); right: calc(8px + var(--safe-r)); }
+  .hud-left { flex-direction: column; max-width: 52%; gap: 6px; }
+  .hud-right { gap: 6px; }
+  .chip { padding: 4px 9px; border-radius: 12px; }
+  .chip b { font-size: 14px; }
+  .chip small { font-size: 9px; }
+  .chip.time { font-size: 22px; }
+  .coins-chip { min-height: 38px; font-size: 15px; }
+  .icon-btn { width: 38px; height: 38px; font-size: 17px; border-radius: 12px; }
+  #coach { width: 96vw; }
+  #coach-text { font-size: 14px; padding: 6px 12px; }
+  .sonar { width: 160px; height: 88px; }
+  .hud-rank { min-width: 150px; font-size: 13px; }
+  .fight, .power { left: 50%; width: 92vw; bottom: calc(150px + var(--safe-b)); }
+  .meter span { width: 96px; }
+  #banner { top: 30%; }
+}
+@media (max-width: 760px) and (min-height: 521px), (max-aspect-ratio: 6/5) {
+  /* Kartenseite scrollt: Start-Knopf bleibt unten sichtbar */
+  #screen-map .actions.row {
+    position: sticky; bottom: calc(-12px - var(--safe-b)); margin: 0 -14px calc(-12px - var(--safe-b)); padding: 10px 14px calc(12px + var(--safe-b));
+    background: linear-gradient(180deg, rgba(4, 22, 31, 0.6), rgba(4, 22, 31, 0.95) 30%);
+  }
+}

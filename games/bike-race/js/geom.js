@@ -1,5 +1,5 @@
-import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import * as THREE from '../../../vendor/three.module.js';
+import { mergeGeometries } from '../../../vendor/addons/utils/BufferGeometryUtils.js';
 
 // Gemeinsame Bauhelfer für Fahrrad- und Motorradmodell (bikes.js, motos.js):
 // Profil-Tabellen, Lofts (glatte Körper aus Superellipsen-Querschnitten), Material-Bündel (Bucket), Canvas-Texturen.

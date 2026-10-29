@@ -608,8 +608,10 @@ body.is-touch #hud .chip, body.is-touch #hud .icon-btn, body.is-touch #minimap {
   .garage { width: min(500px, 54vw); padding: 10px 12px; gap: 8px; }
   .bike-head .muted { display: none; }
   .bike-title { font-size: 18px; }
-  .stats { gap: 4px 8px; padding: 6px 10px; }
-  .stat { font-size: 9px; gap: 3px; }
+  .stats { display: none; } /* zu wenig Höhe: Liste der Teile hat Vorrang */
+  .kind { min-height: 36px; font-size: 14px; }
+  .kind span { font-size: 18px; }
+  .tab-content { min-height: 80px; }
   .tab { min-height: 40px; font-size: 13px; padding: 0 10px; }
   .btn { min-height: 46px; font-size: 16px; padding: 0 20px; }
   .btn.primary { min-width: 150px; }
@@ -646,4 +648,10 @@ body.is-touch #hud .chip, body.is-touch #hud .icon-btn, body.is-touch #minimap {
   .setting { padding: 8px 12px; }
   .stars { font-size: 38px; }
   .big-time { font-size: 36px; }
+}
+
+/* Hochformat mit wenig Höhe (Handy, kleines Fenster): Teile-Liste braucht den Platz, Werte-Balken weg */
+@media (orientation: portrait) and (max-height: 820px) {
+  .stats { display: none; }
+  .tab-content { min-height: 70px; }
 }

@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import { UP, v3, _m, _q, _one, prof, loft, line, spline, Bucket, canvasTex, hex } from './geom.js';
 
 // Prozedurale Motorräder (Dirt Bike, Enduro, Naked Bike, Supersportler). Wie beim Fahrrad werden alle statischen

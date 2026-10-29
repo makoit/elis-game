@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import {
   FISH, FISH_IDS, RODS, BAITS, TECHNIQUES, TIMES, DEPTHS, rodById, baitById, baitFitsRod, fishForBait, biteTable, pickFish, rollWeight,
   fishingDepth, lineOk, gearScore, bestGear, SKIN_TONES, HAIR_COLORS, HAIR_STYLES, HATS, TOPS, PANTS, OUTFIT_COLORS, DEFAULT_LOOK, levelFromXp, xpForLevel, fmtKg, lengthCm,
@@ -10,6 +10,7 @@ import { createAngler, preloadAngler } from './angler.js';
 import { createFish } from './fishmodel.js';
 import { Fishing } from './fishing.js';
 import { sfx } from './sfx.js';
+import { createResolution, RES } from '../../shared/resolution.js';
 
 const $ = (id) => document.getElementById(id);
 // Ladefehler (z. B. fehlende Textur) mit Dateinamen melden statt nur „Event“
@@ -57,10 +58,12 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.prepend(renderer.domElement);
 function quality() { return qs.get('q') || (state.quality === 'auto' ? (isTouch ? 'low' : 'high') : state.quality); }
+const res = createResolution(renderer);
 function applyQuality() {
   const q = quality();
-  renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'high' ? 2 : q === 'mid' ? 1.5 : 1));
-  renderer.setSize(innerWidth, innerHeight);
+  // Auto auf Handy/Tablet: einfache Effekte, aber scharfe Auflösung (regelt bei Ruckeln selbst herunter)
+  const r = RES[state.quality === 'auto' && !qs.get('q') && isTouch ? 'mid' : q] || RES.mid;
+  res.set(r.max, r.budget);
   renderer.shadowMap.enabled = q !== 'low';
 }
 applyQuality();
@@ -903,6 +906,19 @@ function drawSonar(dt) {
   x.fillText(`ECHOLOT  ${spot.depth} m`, 6, 13);
 }
 
+// HUD-Ebenen untereinander statt übereinander: echte Unterkante der oberen Leiste und der Schritt-Leiste messen
+const hudLayout = () => {
+  const root = document.documentElement.style;
+  const hudB = document.querySelector('.hud-top').getBoundingClientRect().bottom;
+  root.setProperty('--hud-b', hudB + 'px');
+  root.setProperty('--coach-b', Math.max(hudB, $('coach').getBoundingClientRect().bottom) + 'px');
+};
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(hudLayout);
+  ro.observe(document.querySelector('.hud-top'));
+  ro.observe($('coach'));
+}
+
 // ---- Loop ----
 let last = performance.now();
 let dbgN = 0;
@@ -911,6 +927,7 @@ function loop(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); // rAF-Zeit kann vor performance.now() beim Laden liegen
   last = now;
   lastDt = dt;
+  res.update(dt);
   readInput();
   if (view === 'world' && fishing) {
     if (!paused && !$('screen-catch').classList.contains('active')) {
@@ -939,6 +956,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && vie
 // ---- Start ----
 renderMode();
 showcase.resize();
+requestAnimationFrame(loop); // Szene schon zeichnen, während der Angler noch lädt
 loading('Lade Angler …');
 try {
   await Promise.all([preloadAngler(), showcase.ready]);
@@ -972,4 +990,3 @@ if (qs.has('go')) {
     }
   }
 } else if (qs.get('screen') === 'map') { openMap(); } else if (qs.get('screen') === 'garage') { openGarage(); }
-requestAnimationFrame(loop);

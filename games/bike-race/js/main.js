@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../../../vendor/three.module.js';
 import {
   BRANDS, CATEGORIES, KINDS, PALETTE, DEFAULT_CONFIG, resolveBike, statBars, randomConfig, brandsOf, catsOf, partsFor, ALL_PART_KEYS,
   SKIN_TONES, HAIR_COLORS, HAIR_STYLES, KITS, HELMETS, MOTO_HELMETS, FINISHES, PATTERNS, TIRE_WALLS,
@@ -12,6 +12,7 @@ import { input, initInput, resetInput, isTouchDevice, SENS } from './input.js';
 import { sfx } from './sfx.js';
 import { music } from './music.js';
 import { preloadModels, loadSky } from './assets.js';
+import { createResolution, RES } from '../../shared/resolution.js';
 
 const $ = (id) => document.getElementById(id);
 const hexCss = (c) => '#' + c.toString(16).padStart(6, '0');
@@ -60,17 +61,18 @@ function effectiveQuality() {
   if (qs.get('q')) return qs.get('q');
   return state.quality === 'auto' ? (isTouchDevice ? 'low' : 'high') : state.quality;
 }
+let race = null;
+const res = createResolution(renderer, () => { if (race) race.resize(); });
 function applyQuality() {
   const q = effectiveQuality();
-  const cap = q === 'high' ? 2 : q === 'mid' ? 1.5 : 1;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, cap));
-  renderer.setSize(innerWidth, innerHeight);
+  // Auto auf Handy/Tablet: einfache Effekte, aber scharfe Auflösung (regelt bei Ruckeln selbst herunter)
+  const r = RES[state.quality === 'auto' && !qs.get('q') && isTouchDevice ? 'mid' : q] || RES.mid;
+  res.set(r.max, r.budget);
   renderer.shadowMap.enabled = q !== 'low';
 }
 applyQuality();
 
 const showroom = new Showroom(renderer);
-let race = null;
 // Modelle (Fahrer, Felsen, Baumstämme …) gleich beim Start laden; die Garage zeigt bis dahin den gebauten Fahrer
 const modelsReady = preloadModels().then(() => { if (!race && $('screen-garage').classList.contains('active')) showroom.setBike(currentDef()); });
 let paused = false;
@@ -494,7 +496,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) setPa
 
 // ---- Größe & Loop ----
 function onResize() {
-  renderer.setSize(innerWidth, innerHeight);
+  applyQuality();
   showroom.resize();
   if (race) race.resize();
 }
@@ -524,7 +526,9 @@ if (qs.has('start')) {
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const raw = clock.getDelta();
+  res.update(raw);
+  const dt = Math.min(raw, 0.05);
   if (race) {
     if (!paused) race.update(dt);
     race.render(dt);
